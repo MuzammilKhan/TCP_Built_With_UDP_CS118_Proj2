@@ -15,34 +15,29 @@ void error(char *msg)
   exit(1);
 }
 
-/*Decode the TCP header at msgp and get desired values. Following data types chosen so that encoding is easy later. Using referenced
+/*Decode basic "TCP header" at msgp and get desired values. Following data types chosen so that encoding is easy later. Using referenced
 data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
-void DecodeTCPHeader(char* msgp, unsigned short& source, unsigned short& destination, unsigned int& sequence_number,
- unsigned int& acknowledgement_number, unsigned int& ACK, unsigned int& SYN, unsigned int& FIN, unsigned short& window_size){
-  memcpy(&source, msgp, 2);
-  memcpy(&destination, msgp+16, 2);  
-  memcpy(&sequence_number, msgp+32, 4); 
-  memcpy(&acknowledgement_number, msgp+64, 4);
+void DecodeTCPHeader(char* msgp, unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned int* ACK, unsigned int* SYN, unsigned int* FIN, unsigned short* window_size){
+  memcpy(sequence_number, msgp, 4); 
+  memcpy(acknowledgement_number, msgp+32, 4);
   char tmp; 
-  memcpy(&tmp, msgp+102, 1);
-  ACK = (tmp & 16) >> 4;
-  SYN = tmp & 2 >> 1;
-  FIN = tmp & 1;  
-  memcpy(window_size, msgp+112, 4);  
+  memcpy(&tmp, msgp+64, 1);
+  *ACK = (tmp & 4) >> 2;
+  *SYN = tmp & 2 >> 1;
+  *FIN = tmp & 1;  
+  memcpy(window_size, msgp+80, 2);  
   return;
 }
 
-/*Encode TCP header at msgp. Set checksum and other fields not explicitly set here to 0*/
-void EncodeTCPHeader(char* msgp, unsigned short source, unsigned short destination, unsigned int sequence_number,
- unsigned int acknowledgement_number, unsigned int ACK, unsigned int SYN, unsigned int FIN, unsigned short window_size){
-  memset(msgp, 0, 768); //set header to 0
-  memcpy(msgp, &source, 2); 
-  memcpy(msgp+16,&destination, 2); 
-  memcpy(msgp+32, &sequence_number, 4);
-  memcpy(msgp+64,&acknowledgement_number, 4);
-  //memset(msgp+96, (6 << 5), 1); //setting data offset to 6 32-bit words. Check: This can probably be ignored for our purpose as we assume it
-  memset(msgp+102, ((ACK << 4) + (SYN << 1) + FIN), 1);// Assuming other flags to be 0 for our purposes
-  memcpy(msgp+112, window_size, 4);  
+/*Encode "TCP header" at msgp. Set checksum and other fields not explicitly set here to 0*/
+void EncodeTCPHeader(char* msgp, unsigned int sequence_number, unsigned int acknowledgement_number, unsigned int ACK, unsigned int SYN, unsigned int FIN, unsigned short window_size){
+  memset(msgp, 0, 112); //set header to 0
+  memcpy(msgp, &sequence_number, 4);
+  memcpy(msgp+32,&acknowledgement_number, 4);
+  char tmp;
+  tmp = ((ACK << 2) + (SYN << 1) + FIN);
+  memset(msgp+64, tmp, 1);// Assuming other flags to be 0 for our purposes
+  memcpy(msgp+80, &window_size, 2);  
   return;
 }
 
@@ -52,7 +47,8 @@ int main(int argc, char *argv[])
 {
   // restrictions for our TCP implementation
   int max_packet_length = 1024; //includes header, in bytes
-  int max_sequence_number = 30720; //bytes    int window_size = 5120; //bytes
+  int max_sequence_number = 30720; //bytes    
+  int window_size_req = 5120; //bytes
   int rto_val = 500 * 1000; //retransmission timeout value (ms) but select uses us, so we multiply by 1000
 
   //timer
@@ -82,7 +78,7 @@ int main(int argc, char *argv[])
     error("ERROR on binding");
           
   int n;
-  int buffer_size = 256;
+  int buffer_size = 5120;
   char buffer[buffer_size];			 
   memset(buffer, 0, buffer_size);	//reset memory
 
@@ -93,7 +89,7 @@ int main(int argc, char *argv[])
   unsigned int ACK;
   unsigned int SYN;
   unsigned int FIN;
-  unsigned short window_size;
+  unsigned short window_size = window_size_req; // change
 
   int handshake = 0;
   int closing = 0;
@@ -121,7 +117,7 @@ int main(int argc, char *argv[])
         n = recvfrom(sockfd, buffer, buffer_size, 0, (struct sockaddr *) &cli_addr, &clilen);
         if(n < 0)
             error("ERROR recvfrom");
-        DecodeTCPHeader(buffer, source, destination, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+        DecodeTCPHeader(buffer, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
         if(SYN){ // THREE WAY HANDSHAKE
           ACK = 1;
           SYN = 1;
@@ -130,7 +126,7 @@ int main(int argc, char *argv[])
           sequence_number = 0; 
           handshake = 1;
           //respond to client
-          EncodeTCPHeader(buffer, source, destination, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          EncodeTCPHeader(buffer, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
           n = sendto(sockfd, buffer, strlen(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
           if (n < 0)  
             error("ERROR in three way handshake: sendto");
