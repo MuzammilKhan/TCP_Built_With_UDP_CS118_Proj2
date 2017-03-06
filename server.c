@@ -7,7 +7,8 @@
 #include <sys/wait.h>	/* for the waitpid() system call */
 #include <signal.h>	/* signal name macros, and the kill() prototype */
 #include <sys/time.h> // for timer
-
+#include <fcntl.h> // for open
+#include <unistd.h> // for close
 
 void error(char *msg)
 {
@@ -18,14 +19,20 @@ void error(char *msg)
 /*Decode basic "TCP header" at msgp and get desired values. Following data types chosen so that encoding is easy later. Using referenced
 data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
 void DecodeTCPHeader(char* msgp, unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned int* ACK, unsigned int* SYN, unsigned int* FIN, unsigned short* window_size){
+  
   memcpy(sequence_number, msgp, 4); 
-  memcpy(acknowledgement_number, msgp+32, 4);
+  printf("Seq_num: %d\n", *sequence_number ); //debugging
+
+  memcpy(acknowledgement_number, (msgp+32), 4);
+  printf("ack_num: %d\n", *acknowledgement_number ); //debugging
+
   char tmp; 
   memcpy(&tmp, msgp+64, 1);
   *ACK = (tmp & 4) >> 2;
   *SYN = tmp & 2 >> 1;
   *FIN = tmp & 1;  
   memcpy(window_size, msgp+80, 2);  
+  printf("w_size: %d\n", *window_size );//debugging
   return;
 }
 
@@ -106,6 +113,7 @@ int main(int argc, char *argv[])
     Timer.tv_sec = 0;
     Timer.tv_usec = rto_val;
     n = select(sockfd + 1, &active_fd_set, NULL, NULL, &Timer);
+    
     if (n < 0) {
       close(sockfd);
       //ERROR OCCURED TODO: handle error
@@ -117,7 +125,9 @@ int main(int argc, char *argv[])
         n = recvfrom(sockfd, buffer, buffer_size, 0, (struct sockaddr *) &cli_addr, &clilen);
         if(n < 0)
             error("ERROR recvfrom");
-        DecodeTCPHeader(buffer, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+        
+        DecodeTCPHeader(buffer, &sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
+        
         if(SYN){ // THREE WAY HANDSHAKE
           ACK = 1;
           SYN = 1;

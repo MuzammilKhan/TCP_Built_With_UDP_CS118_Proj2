@@ -22,30 +22,29 @@ void error(char *msg) {
 }
 
 
+/*Decode basic "TCP header" at msgp and get desired values. Following data types chosen so that encoding is easy later. Using referenced
+data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
+void DecodeTCPHeader(char* msgp, unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned int* ACK, unsigned int* SYN, unsigned int* FIN, unsigned short* window_size){
+  memcpy(sequence_number, msgp, 4); 
+  memcpy(acknowledgement_number, msgp+32, 4);
+  char tmp; 
+  memcpy(&tmp, msgp+64, 1);
+  *ACK = (tmp & 4) >> 2;
+  *SYN = tmp & 2 >> 1;
+  *FIN = tmp & 1;  
+  memcpy(window_size, msgp+80, 2);  
+  return;
+}
 
-/*Encode TCP header at msgp. Set checksum and other fields not explicitly set here to 0*/
-void EncodeTCPHeader(char* msgp, unsigned short source, unsigned short destination, unsigned int sequence_number,
- unsigned int acknowledgement_number, unsigned int ACK, unsigned int SYN, unsigned int FIN, unsigned short window_size){
-  
-printf("GOt here\n");
-  memset(msgp, 0, 768); //set header to 0
-  printf("GOt here2\n");
-
-
-  char * tmp[100];
-  printf("GOt here3\n");
-  sprintf(tmp , "%d", source);
-   printf("source1: %s\n", tmp);
-  strncpy(msgp, tmp, 2); 
-   printf("source2: %s\n", tmp);
-  memcpy(msgp+16,&destination, 2); 
-  memcpy(msgp+32, &sequence_number, 4);
-  memcpy(msgp+64,&acknowledgement_number, 4);
-  //memset(msgp+96, (6 << 5), 1); //setting data offset to 6 32-bit words. Check: This can probably be ignored for our purpose as we assume it
-  memset(msgp+102, ((ACK << 4) + (SYN << 1) + FIN), 1);// Assuming other flags to be 0 for our purposes
-  //memcpy(msgp+112, (window_size), 4);  
- 
-  printf("msgp: %s  ,size: %d\n\n",msgp, sizeof(msgp) );
+/*Encode "TCP header" at msgp. Set checksum and other fields not explicitly set here to 0*/
+void EncodeTCPHeader(char* msgp, unsigned int sequence_number, unsigned int acknowledgement_number, unsigned int ACK, unsigned int SYN, unsigned int FIN, unsigned short window_size){
+  memset(msgp, 0, 112); //set header to 0
+  memcpy(msgp, &sequence_number, 4);
+  memcpy(msgp+32,&acknowledgement_number, 4);
+  char tmp;
+  tmp = ((ACK << 2) + (SYN << 1) + FIN);
+  memset(msgp+64, tmp, 1);// Assuming other flags to be 0 for our purposes
+  memcpy(msgp+80, &window_size, 2);  
 
   return;
 }
@@ -101,12 +100,12 @@ int main(int argc, char **argv) {
 
       unsigned short source; 
       unsigned short destination;
-      unsigned int sequence_number = 0;
-      unsigned int acknowledgement_number = 0;
+      unsigned int sequence_number = 169;
+      unsigned int acknowledgement_number = 32;
       unsigned int ACK;
       unsigned int SYN;
       unsigned int FIN;
-      unsigned short window_size;
+      unsigned short window_size = 10;
 
       int handshake = 0;
       int closing = 0;
@@ -132,16 +131,26 @@ int main(int argc, char **argv) {
         }
 
 
-        EncodeTCPHeader(buf, source, destination, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-        printf("%s\n",buf );
+        EncodeTCPHeader(buf, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+        
+        unsigned int temp_seq = 0;
+        unsigned int temp_ack = 0 ;
+        DecodeTCPHeader(buf,  &temp_seq,&temp_ack, &ACK, &SYN, &FIN,  &window_size);
+          
+        printf("seq: %u\n",temp_seq );
+        printf("ack: %u\n",temp_ack );
+
+
+
+        printf("buf_size: %lu\n",sizeof(buf) );
         /* send the message to the server */
         serverlen = sizeof(serveraddr);
-        n = sendto(sockfd, buf, strlen(buf), 0, &serveraddr, serverlen);
+        n = sendto(sockfd, buf, strlen(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
         if (n < 0) 
           error("ERROR in sendto");
         
         /* print the server's reply */
-        n = recvfrom(sockfd, buf, strlen(buf), 0, &serveraddr, &serverlen);
+        n = recvfrom(sockfd, buf, strlen(buf), 0, ( struct sockaddr* restrict ) &serveraddr, &serverlen);
         if (n < 0) 
           error("ERROR in recvfrom");
         printf("Echo from server: %s", buf);
