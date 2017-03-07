@@ -20,6 +20,18 @@ void error(char *msg)
 data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
 void DecodeTCPHeader(char* msgp, unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned int* ACK, unsigned int* SYN, unsigned int* FIN, unsigned short* window_size){
   
+  
+  int i = 0;
+  unsigned int temp = 0;
+  for( ; i < 50 ; i +=4){
+    memcpy(&temp , msgp + i ,4);
+    printf("temp %d :%u\n",i,temp );
+    temp = 1;
+  }
+
+
+
+
   memcpy(sequence_number, msgp, 4); 
   printf("Seq_num: %d\n", *sequence_number ); //debugging
 
@@ -85,7 +97,7 @@ int main(int argc, char *argv[])
     error("ERROR on binding");
           
   int n;
-  int buffer_size = 5120;
+  int buffer_size = 1024;
   char buffer[buffer_size];			 
   memset(buffer, 0, buffer_size);	//reset memory
 
@@ -129,6 +141,7 @@ int main(int argc, char *argv[])
         DecodeTCPHeader(buffer, &sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
         
         if(SYN){ // THREE WAY HANDSHAKE
+          printf("Inside IF.\n" );
           ACK = 1;
           SYN = 1;
           FIN = 0;

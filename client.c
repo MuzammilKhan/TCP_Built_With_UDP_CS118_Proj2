@@ -25,6 +25,17 @@ void error(char *msg) {
 /*Decode basic "TCP header" at msgp and get desired values. Following data types chosen so that encoding is easy later. Using referenced
 data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
 void DecodeTCPHeader(char* msgp, unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned int* ACK, unsigned int* SYN, unsigned int* FIN, unsigned short* window_size){
+  
+  int i = 0;
+  unsigned int temp = 0;
+  for( ; i < 50 ; i +=4){
+    memcpy(&temp , msgp + i ,4);
+    printf("temp %d :%u\n",i,temp );
+    temp = 0;
+  }
+
+
+
   memcpy(sequence_number, msgp, 4); 
   memcpy(acknowledgement_number, msgp+32, 4);
   char tmp; 
@@ -66,6 +77,8 @@ int main(int argc, char **argv) {
     char *hostname;
     char buf[BUFSIZE];
 
+    struct timeval Timer;
+    fd_set active_fd_set;
     /* check command line arguments */
     if (argc != 3) {
        fprintf(stderr,"usage: %s <hostname> <port>\n", argv[0]);
@@ -100,7 +113,7 @@ int main(int argc, char **argv) {
 
       unsigned short source; 
       unsigned short destination;
-      unsigned int sequence_number = 169;
+      unsigned int sequence_number = 163326;
       unsigned int acknowledgement_number = 32;
       unsigned int ACK;
       unsigned int SYN;
@@ -118,17 +131,24 @@ int main(int argc, char **argv) {
 
     while(1){
     /* get a message from the user */
-        bzero(buf, BUFSIZE);
-        bzero(temp_buf , BUFSIZE);
-        printf("Please enter msg: ");
-        fgets(temp_buf, BUFSIZE, stdin);
+        
+      FD_ZERO(&active_fd_set);
+      FD_SET(sockfd, &active_fd_set);
+      Timer.tv_sec = 0;
+      Timer.tv_usec = rto_val;
+
+
+      bzero(buf, BUFSIZE);
+      bzero(temp_buf , BUFSIZE);
+      printf("Please enter msg: ");
+      fgets(temp_buf, BUFSIZE, stdin);
         
 
-        if(connected == 0){
-            SYN = 1;
-            ACK = 1;
-            FIN = 1;
-        }
+      if(connected == 0){
+          SYN = 1;
+          ACK = 1;
+          FIN = 1;
+      }
 
 
         EncodeTCPHeader(buf, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
@@ -142,10 +162,10 @@ int main(int argc, char **argv) {
 
 
 
-        printf("buf_size: %lu\n",sizeof(buf) );
+        printf("sizeof: %lu  strlen: %lu\n", sizeof(buf) , strlen(buf));
         /* send the message to the server */
         serverlen = sizeof(serveraddr);
-        n = sendto(sockfd, buf, strlen(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
+        n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
         if (n < 0) 
           error("ERROR in sendto");
         
