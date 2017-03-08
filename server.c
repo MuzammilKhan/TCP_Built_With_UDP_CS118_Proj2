@@ -9,7 +9,7 @@
 #include <sys/time.h> // for timer
 #include <fcntl.h> // for open
 #include <unistd.h> // for close
-
+#include <netdb.h>
 void error(char *msg)
 {
   perror(msg);
@@ -19,37 +19,28 @@ void error(char *msg)
 /*Decode basic "TCP header" at msgp and get desired values. Following data types chosen so that encoding is easy later. Using referenced
 data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
 void DecodeTCPHeader(char* msgp, unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned int* ACK, unsigned int* SYN, unsigned int* FIN, unsigned short* window_size){
-  
-  
-  int i = 0;
-  unsigned int temp = 0;
-  for( ; i < 50 ; i +=4){
-    memcpy(&temp , msgp + i ,4);
-    printf("temp %d :%u\n",i,temp );
-    temp = 1;
-  }
-
-
-
-
+ 
   memcpy(sequence_number, msgp, 4); 
-  printf("Seq_num: %d\n", *sequence_number ); //debugging
+  printf("srv_seq_rec: %d\n", *sequence_number ); //debugging
 
   memcpy(acknowledgement_number, (msgp+32), 4);
-  printf("ack_num: %d\n", *acknowledgement_number ); //debugging
+  printf("srv_ack_rec: %d\n\n", *acknowledgement_number ); //debugging
 
   char tmp; 
   memcpy(&tmp, msgp+64, 1);
   *ACK = (tmp & 4) >> 2;
   *SYN = tmp & 2 >> 1;
   *FIN = tmp & 1;  
+ 
   memcpy(window_size, msgp+80, 2);  
-  printf("w_size: %d\n", *window_size );//debugging
+  
   return;
 }
 
 /*Encode "TCP header" at msgp. Set checksum and other fields not explicitly set here to 0*/
 void EncodeTCPHeader(char* msgp, unsigned int sequence_number, unsigned int acknowledgement_number, unsigned int ACK, unsigned int SYN, unsigned int FIN, unsigned short window_size){
+  printf("srv_seq_sent: %u\n",sequence_number);
+  printf("srv_ack_sent: %u\n\n",acknowledgement_number);
   memset(msgp, 0, 112); //set header to 0
   memcpy(msgp, &sequence_number, 4);
   memcpy(msgp+32,&acknowledgement_number, 4);
@@ -92,6 +83,8 @@ int main(int argc, char *argv[])
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
   serv_addr.sin_port = htons(portno);
+   
+
      
   if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) 
     error("ERROR on binding");
@@ -109,7 +102,7 @@ int main(int argc, char *argv[])
   unsigned int SYN;
   unsigned int FIN;
   unsigned short window_size = window_size_req; // change
-
+  struct hostent *hostp;
   int handshake = 0;
   int closing = 0;
 
@@ -124,6 +117,7 @@ int main(int argc, char *argv[])
     FD_SET(sockfd, &active_fd_set);
     Timer.tv_sec = 0;
     Timer.tv_usec = rto_val;
+    clilen = sizeof(cli_addr);
     n = select(sockfd + 1, &active_fd_set, NULL, NULL, &Timer);
     
     if (n < 0) {
@@ -141,16 +135,24 @@ int main(int argc, char *argv[])
         DecodeTCPHeader(buffer, &sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
         
         if(SYN){ // THREE WAY HANDSHAKE
-          printf("Inside IF.\n" );
+         
           ACK = 1;
           SYN = 1;
-          FIN = 0;
-          acknowledgement_number = sequence_number + 1;
-          sequence_number = 0; 
+          FIN = 1;
+          
+          
+          acknowledgement_number = sequence_number + 1; 
+        
+          sequence_number = 0;
           handshake = 1;
           //respond to client
+          bzero(buffer, buffer_size);
           EncodeTCPHeader(buffer, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-          n = sendto(sockfd, buffer, strlen(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
+          
+          
+          n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
+          
+          
           if (n < 0)  
             error("ERROR in three way handshake: sendto");
         }else if (ACK) { //RECIEVED ACK

@@ -10,7 +10,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h> 
-
+#include <netdb.h>
 #define BUFSIZE 1024
 
 /* 
@@ -26,18 +26,11 @@ void error(char *msg) {
 data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
 void DecodeTCPHeader(char* msgp, unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned int* ACK, unsigned int* SYN, unsigned int* FIN, unsigned short* window_size){
   
-  int i = 0;
-  unsigned int temp = 0;
-  for( ; i < 50 ; i +=4){
-    memcpy(&temp , msgp + i ,4);
-    printf("temp %d :%u\n",i,temp );
-    temp = 0;
-  }
-
-
-
   memcpy(sequence_number, msgp, 4); 
+  printf("cli_seq_rec: %d\n", *sequence_number ); //debugging
   memcpy(acknowledgement_number, msgp+32, 4);
+  printf("cli_ack_rec: %d\n\n", *acknowledgement_number ); //debugging
+
   char tmp; 
   memcpy(&tmp, msgp+64, 1);
   *ACK = (tmp & 4) >> 2;
@@ -49,6 +42,8 @@ void DecodeTCPHeader(char* msgp, unsigned int* sequence_number, unsigned int* ac
 
 /*Encode "TCP header" at msgp. Set checksum and other fields not explicitly set here to 0*/
 void EncodeTCPHeader(char* msgp, unsigned int sequence_number, unsigned int acknowledgement_number, unsigned int ACK, unsigned int SYN, unsigned int FIN, unsigned short window_size){
+  printf("cli_seq_sent: %u\n",sequence_number);
+  printf("cli_ack_sent: %u\n\n",acknowledgement_number);
   memset(msgp, 0, 112); //set header to 0
   memcpy(msgp, &sequence_number, 4);
   memcpy(msgp+32,&acknowledgement_number, 4);
@@ -59,8 +54,6 @@ void EncodeTCPHeader(char* msgp, unsigned int sequence_number, unsigned int ackn
 
   return;
 }
-
-
 
 int main(int argc, char **argv) {
     
@@ -113,7 +106,7 @@ int main(int argc, char **argv) {
 
       unsigned short source; 
       unsigned short destination;
-      unsigned int sequence_number = 163326;
+      unsigned int sequence_number = 1;
       unsigned int acknowledgement_number = 32;
       unsigned int ACK;
       unsigned int SYN;
@@ -153,16 +146,6 @@ int main(int argc, char **argv) {
 
         EncodeTCPHeader(buf, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
         
-        unsigned int temp_seq = 0;
-        unsigned int temp_ack = 0 ;
-        DecodeTCPHeader(buf,  &temp_seq,&temp_ack, &ACK, &SYN, &FIN,  &window_size);
-          
-        printf("seq: %u\n",temp_seq );
-        printf("ack: %u\n",temp_ack );
-
-
-
-        printf("sizeof: %lu  strlen: %lu\n", sizeof(buf) , strlen(buf));
         /* send the message to the server */
         serverlen = sizeof(serveraddr);
         n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
@@ -170,10 +153,15 @@ int main(int argc, char **argv) {
           error("ERROR in sendto");
         
         /* print the server's reply */
-        n = recvfrom(sockfd, buf, strlen(buf), 0, ( struct sockaddr* restrict ) &serveraddr, &serverlen);
+        bzero(buf, BUFSIZE);
+        n = recvfrom(sockfd, buf, sizeof(buf), 0, ( struct sockaddr*  ) &serveraddr, &serverlen);
+        DecodeTCPHeader(buf,  &sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN,  &window_size);
+          
         if (n < 0) 
           error("ERROR in recvfrom");
-        printf("Echo from server: %s", buf);
+        
+       
+        
     }
     return 0;
 }
