@@ -182,6 +182,103 @@ int main(int argc, char *argv[])
         }else if (ACK) { //RECIEVED ACK
           //3 cases: part of 3 way handshake,  ack for closing, or ack for regular data,
           //TODO: fill in how to handle ACKS
+
+//Pseudocode for tcp congestion control
+  //TODO: all variables used in this need to be initialized somewhere before
+  //TODO: need to consider case where ack may overflow 
+
+          //Determine cwnd and ssthresh
+          if(ss) { //Slow Start
+            if(acknowledgement_number > prev_acknowledgement_number ){
+              prev_acknowledgement_number = acknowledgement_number;
+              duplicate_ack_count = 0;
+              cwnd = cwnd + 1;
+              if(cwnd > ssthresh){
+                ss = 0;
+                ca = 1;
+              }
+            }else {
+              duplicate_ack_count = duplicate_ack_count + 1;
+              if(duplicate_ack_count == 3) { // go to fast retransmit
+                duplicate_ack_count = 0;
+                ss = 0;
+                fastretransmit = 1;
+                goto fastretransmit_label;
+              }
+            } 
+
+          }else if (ca) { //Congestion Avoidance
+            if(acknowledgement_number > prev_acknowledgement_number ){
+              prev_acknowledgement_number = acknowledgement_number;
+              duplicate_ack_count = 0;
+              ca_acks_count = ca_acks_count + 1;
+              if(cwnd == ca_acks_count){
+                ca_acks_count = 0;
+                cwnd = cwnd + 1;
+              }             
+            } else{
+              duplicate_ack_count = duplicate_ack_count + 1;
+              if(duplicate_ack_count == 3) { // go to fast retransmit
+                duplicate_ack_count = 0;
+                ca = 0;
+                fastretransmit = 1;
+                goto fastretransmit_label
+              }             
+            }
+
+          }else if (fastretransmit){ //Fast Retransmit
+            fastretransmit_label;
+            ssthresh = max(cwnd/2 , 2); //cwnd/2 should automatically floor in C
+            ssthresh = ssthresh + 3;
+            retransmit_packet = 1;
+            fastretransmit = 0;
+            fastrecovery = 1;
+
+          }else if (fastrecovery){ //Fast Recovery
+              if(acknowledgement_number > prev_acknowledgement_number) {
+                prev_acknowledgement_number = acknowledgement_number;
+                duplicate_ack_count = 0;
+                fastrecovery = 0;
+                cwnd = ssthresh;
+                ss = 1;
+              }else{ //duplicate ack
+                cwnd = cwnd + 1;
+              }
+
+          } else { //Error checking - should never be entered
+            //error - we should never enter this
+          }
+          //cwnd and ssthresh determined by this point
+
+
+          //send packets
+          if(retransmit_packet){
+            retransmit_packet = 0;
+            //retransmit lost packet
+
+          } else {
+            //send packets according to cwnd
+
+            //remove elements we already have an ACK for from sliding window
+
+
+            //put in new sequence numbers to send in sliding window
+
+            //send new elements
+
+          }
+
+
+
+//end pseudocode
+
+
+
+
+
+
+
+
           if(handshake){
             //handshake complete at this point
             handshake = 0;
