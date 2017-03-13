@@ -25,7 +25,7 @@ void error(char *msg) {
 
 /*Decode basic "TCP header" at msgp and get desired values. Following data types chosen so that encoding is easy later. Using referenced
 data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
-void DecodeTCPHeader(char* msgp, char* data , unsigned short * bytes_read ,unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned short* ACK, unsigned short* SYN, unsigned short* FIN, unsigned short* window_size){
+void DecodeTCPHeader(char* msgp, char* data , char* completed ,unsigned short * bytes_read ,unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned short* ACK, unsigned short* SYN, unsigned short* FIN, unsigned short* window_size){
   bzero(data , 1000);
   memcpy(sequence_number, msgp, 4); 
   memcpy(acknowledgement_number, msgp+4, 4);
@@ -33,15 +33,17 @@ void DecodeTCPHeader(char* msgp, char* data , unsigned short * bytes_read ,unsig
   memcpy(SYN, msgp+10, 2);
   memcpy(FIN, msgp+12, 2);
   memcpy(window_size, msgp+14, 2);
-  memcpy(bytes_read, msgp+16, 2);  
-  memcpy(data, msgp+18, 1000);
-   printf("rec: %s\n",data );    
+  memcpy(bytes_read, msgp+16, 2);
+  memcpy(completed, msgp+18, 1);  
+  memcpy(data, msgp+19, 1000);
+   printf("Receiving Packet \n" ); 
+   printf("completed: %c\n\n", *completed);   
   
   return;
 }
 
 /*Encode "TCP header" at msgp. Set checksum and other fields not explicitly set here to 0*/
-void EncodeTCPHeader(char* msgp, char* data ,unsigned short  bytes_read ,unsigned int sequence_number, unsigned int acknowledgement_number, unsigned short ACK, unsigned short SYN, unsigned short FIN, unsigned short window_size){
+void EncodeTCPHeader(char* msgp, char* data ,char completed ,unsigned short  bytes_read ,unsigned int sequence_number, unsigned int acknowledgement_number, unsigned short ACK, unsigned short SYN, unsigned short FIN, unsigned short window_size){
  	bzero(msgp,1000);
   memset(msgp, 0, 1024); //set header to 0
   memcpy(msgp, &sequence_number, 4);
@@ -52,11 +54,10 @@ void EncodeTCPHeader(char* msgp, char* data ,unsigned short  bytes_read ,unsigne
   memcpy(msgp+12,&FIN, 2);
   memcpy(msgp+14, &window_size, 2);
    memcpy(msgp+16, &bytes_read ,2);
-   memcpy(msgp+18 , data, bytes_read);
-   printf("bytes: %u\n", *(msgp+16));
- 
-   printf("sent: %s\n", data);
- 
+   memcpy(msgp+18, &completed ,1);
+   memcpy(msgp+19 , data, bytes_read);
+   
+   printf("Sending Packet \n\n");
   
   return;
 }
@@ -71,7 +72,7 @@ int main(int argc, char **argv) {
     FILE *fp;
     char file_data[1000];
     bzero(file_data ,1000);
-
+    char completed = '0';
     int sockfd, portno, n;
     int serverlen;
     struct sockaddr_in serveraddr;
@@ -151,8 +152,8 @@ int main(int argc, char **argv) {
           sequence_number = 0; // CHANGE THIS
 
           bzero(buf, BUFSIZE);
-          EncodeTCPHeader(buf, file_data,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-          printf("Sending packet SYN\n");
+          EncodeTCPHeader(buf, file_data, completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          
           n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
           if (n < 0)  
             error("ERROR in three way handshake: sendto");
@@ -169,19 +170,6 @@ int main(int argc, char **argv) {
 
           bzero(buf, BUFSIZE);
           bzero(temp_buf , BUFSIZE);
-          /*
-          printf("Please enter msg: ");
-          fgets(temp_buf, BUFSIZE, stdin);
-          bzero(file_buffer,1000);
-          int rem = remove("rec.txt");
-          if(rem != 0)
-            printf("Error in deleting file rec.txt\n");
-       
-            FILE* fp;
-            
-            fp = fopen("rec.txt" , "a");
-            */
-
 
           if (n < 0) {
             close(sockfd);
@@ -214,9 +202,8 @@ int main(int argc, char **argv) {
                 if(n < 0)
                     error("ERROR recvfrom");
                 
-                DecodeTCPHeader(buf, file_data, &bytes_read,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
-                printf("Receiving packet %d\n", sequence_number); // IS THIS RIGHT?
-
+                DecodeTCPHeader(buf, file_data, &completed,&bytes_read,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
+                
 
                 if(SYN && ACK) {
                   //reply with ACK & filename
@@ -229,12 +216,11 @@ int main(int argc, char **argv) {
                   sequence_number = tmp; // CHANGE THIS
 
                   bzero(buf, BUFSIZE);
-                  EncodeTCPHeader(buf, file_data,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                  EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
 
                   //put filename into buffer after pseudo tcp header
-                  strncpy(buf+18, argv[3], strlen(argv[3])); //CHECK THIS!!!
+                  strncpy(buf+19, argv[3], strlen(argv[3])); //CHECK THIS!!!
 
-                  printf("Sending packet %d\n", acknowledgement_number); // IS THIS RIGHT?
                   n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
                   if (n < 0)  
                     error("ERROR in three way handshake: sendto");
@@ -261,8 +247,7 @@ int main(int argc, char **argv) {
                   sequence_number = tmp; // CHANGE THIS
 
                   bzero(buf, BUFSIZE);
-                  EncodeTCPHeader(buf, file_data,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-                  printf("Sending packet %d\n", acknowledgement_number); // IS THIS RIGHT?
+                  EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
                   n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
                   if (n < 0)  
                     error("ERROR in three way handshake: sendto");
@@ -272,24 +257,16 @@ int main(int argc, char **argv) {
                   Timer.tv_usec = 2 * rto_val; //FIX THIS VALUE
 
                 } else {
-                  // data transfer
-
-                  //check if file completely received
-                  //if so then inititate closing
-                  //else do the following
-
-                  //put data from buffer in file
+                  
                   printf("writing data to file\n");
                   int i = 0;
                   
                   printf("file_data: %s\n",file_data );
                   printf("num: %lu size: %lu\n",strlen(file_data) , sizeof(file_data) );
-                  //fprintf(fp , "%s",file_data );
+                  
                   fwrite(file_data , 1 , bytes_read , fp);
-                  //for(;i<1000;i++){ //Change upper limit later
-                  //  fwrite( file_data + i, 1 , 1,fp); // ADJUST SIZE 
-                  //}
-                  fclose(fp);
+                  
+                  //fclose(fp);
                   //reply with ACK
                   ACK = 1;
                   SYN = 0;
@@ -300,14 +277,58 @@ int main(int argc, char **argv) {
                   sequence_number = tmp; // CHANGE THIS
 
                   bzero(buf, BUFSIZE);
-                  EncodeTCPHeader(buf, file_data,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-                  printf("Sending packet %d\n", acknowledgement_number); // IS THIS RIGHT?
+                  EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
                   n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
                   if (n < 0)  
                     error("ERROR in three way handshake: sendto");
 
                   Timer.tv_sec = 0; //reset timer
                   Timer.tv_usec = rto_val; 
+
+
+                  if(completed == '1'){
+                  		printf("Sending client FIN\n");
+                  		FIN = 1;
+                  		ACK = 0;
+                  		SYN = 0;
+					  EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+	                  n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
+	                  if (n < 0)  
+	                    error("ERROR in FIN init");
+
+	                   bzero(buf, BUFSIZE);
+		                n = recvfrom(sockfd, buf, BUFSIZE, 0, (struct sockaddr *) &serveraddr, &serverlen);
+		                if(n < 0)
+		                    error("ERROR recvfrom");
+		                
+		                DecodeTCPHeader(buf, file_data, &completed,&bytes_read,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
+		                
+		                if(ACK == 1 && FIN == 0){
+		                	bzero(buf, BUFSIZE);
+			                printf("Recvd server ACK\n");
+			                n = recvfrom(sockfd, buf, BUFSIZE, 0, (struct sockaddr *) &serveraddr, &serverlen);
+			                if(n < 0)
+			                    error("ERROR recvfrom");
+			                
+			                DecodeTCPHeader(buf, file_data, &completed,&bytes_read,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
+			                
+			                if(FIN == 1){
+			                	printf("Recvd server FIN\n");
+			                	FIN = 0;
+		                  		ACK = 1;
+		                  		SYN = 0;
+							  printf("Sending client ACK\n");
+							  EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+			                  n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
+			                  if (n < 0)  
+			                    error("ERROR in FIN init");
+			                fclose(fp);
+			                return 0 ;
+
+			                }
+		                }
+
+                  }
                 }
 
     
