@@ -275,6 +275,8 @@ int main(int argc, char *argv[])
           if(ACK == 1){
             printf("Recvd client ACK and closing socket\n");
             close(sockfd);
+            fclose(fp);
+            return 0;
 
           }
 
