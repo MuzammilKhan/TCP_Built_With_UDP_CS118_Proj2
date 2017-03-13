@@ -18,26 +18,24 @@ void error(char *msg)
 
 /*Decode basic "TCP header" at msgp and get desired values. Following data types chosen so that encoding is easy later. Using referenced
 data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
-void DecodeTCPHeader(char* msgp, char* data,unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned short* ACK, unsigned short* SYN, unsigned short* FIN, unsigned short* window_size){
+void DecodeTCPHeader(char* msgp, char* data, unsigned short * bytes_read ,unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned short* ACK, unsigned short* SYN, unsigned short* FIN, unsigned short* window_size){
+  bzero(data , 1000);
   memcpy(sequence_number, msgp, 4); 
   memcpy(acknowledgement_number, msgp+4, 4);
   memcpy(ACK, msgp+8, 2);
   memcpy(SYN, msgp+10, 2);
   memcpy(FIN, msgp+12, 2);  
   memcpy(window_size, msgp+14, 2);
-  
-  
-  printf("srv_seq_rec: %d\n", *sequence_number ); //debugging
-  printf("srv_ack_rec: %d\n", *acknowledgement_number ); //debugging
-  printf("srv_SYN_rec: %u\n", *SYN);
+  printf("bytes_read: %u\n",*(msgp+16) );
+  memcpy(bytes_read , msgp+16, 2);
+  printf("G\n");
+ 
   return;
 }
 
 /*Encode "TCP header" at msgp. Set checksum and other fields not explicitly set here to 0*/
-void EncodeTCPHeader(char* msgp,char* data ,unsigned int sequence_number, unsigned int acknowledgement_number, unsigned short ACK, unsigned short SYN, unsigned short FIN, unsigned short window_size){
-  printf("srv_seq_sent: %u\n",sequence_number);
-  printf("srv_ack_sent: %u\n",acknowledgement_number);
-  printf("srv_SYN_sent: %u\n",SYN );
+void EncodeTCPHeader(char* msgp,char* data , unsigned short  bytes_read ,unsigned int sequence_number, unsigned int acknowledgement_number, unsigned short ACK, unsigned short SYN, unsigned short FIN, unsigned short window_size){
+  bzero(msgp , 1024);
   memset(msgp, 0, 1024); //set header to 0
   memcpy(msgp, &sequence_number, 4);
   memcpy(msgp+4,&acknowledgement_number, 4);
@@ -47,7 +45,8 @@ void EncodeTCPHeader(char* msgp,char* data ,unsigned int sequence_number, unsign
   memcpy(msgp+12,&FIN, 2);
   
   memcpy(msgp+14, &window_size, 2);
-   memcpy(msgp+16 , data,50);
+  memcpy(msgp+16, &bytes_read, 2);
+   memcpy(msgp+18 , data, bytes_read);
    printf("sent: %s\n", data);
   return;
 }
@@ -103,6 +102,7 @@ int main(int argc, char *argv[])
   unsigned short SYN;
   unsigned short FIN;
   unsigned short window_size = window_size_req; // change
+  unsigned short bytes_read = 0;
   struct hostent *hostp;
   int handshake = 0;
   int closing = 0;
@@ -112,8 +112,8 @@ int main(int argc, char *argv[])
   //we are using a hard coded port for our application so source = dest port
   source = portno;
   destination = source;
-  char file_data[100];
-  bzero(file_data ,100);
+  char file_data[1000];
+  bzero(file_data ,1000);
 
      
   
@@ -148,10 +148,11 @@ int main(int argc, char *argv[])
       if (FD_ISSET(sockfd, &active_fd_set)) { // new connection request
         bzero(buffer, buffer_size);
         n = recvfrom(sockfd, buffer, buffer_size, 0, (struct sockaddr *) &cli_addr, &clilen);
+        printf("Got Here:\n");
         if(n < 0)
             error("ERROR recvfrom");
         
-        DecodeTCPHeader(buffer, file_data, &sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
+        DecodeTCPHeader(buffer, file_data,&bytes_read ,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
         printf("Receiving packet %d\n", acknowledgement_number); // IS THIS RIGHT?
     
 
@@ -168,7 +169,7 @@ int main(int argc, char *argv[])
           handshake = 1;
           //respond to client
           bzero(buffer, buffer_size);
-          EncodeTCPHeader(buffer, file_data,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          EncodeTCPHeader(buffer, file_data,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
           printf("Sending packet %d WND SYN\n", sequence_number); // IS THIS RIGHT?
           n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
           if (n < 0)  
@@ -219,7 +220,7 @@ int main(int argc, char *argv[])
             // open file if it exists
             // start sedning data
             
-            fp = fopen(buffer + 16 , "r"); 
+            fp = fopen(buffer + 18 , "r"); 
             if(fp == NULL){
               //if it doesnt exist need to start closing connection?
               error("File doesn't exist"); // Error checking, actually need to implement closing later
@@ -227,16 +228,18 @@ int main(int argc, char *argv[])
 
 
               int i = 0;
-              for(;i<35;i++){ //Change upper limit later
+              
+              for(;i<1000;i++){ //Change upper limit later
                  n = fread(file_data +i, 1,1,fp ); 
                  if(n != 1){ //n != size of elements means we read whole file
                   break;
                  }
-
+                 bytes_read++;
+                 
               }
-              
+              printf("bytes_read: %d\n", bytes_read );
               bzero(buffer, buffer_size);
-              EncodeTCPHeader(buffer, file_data,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+              EncodeTCPHeader(buffer, file_data, bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
               n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
 
 
@@ -265,7 +268,7 @@ int main(int argc, char *argv[])
 
           //respond to client
           bzero(buffer, buffer_size);
-          EncodeTCPHeader(buffer, file_data,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          EncodeTCPHeader(buffer, file_data,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
           printf("Sending packet %d WND\n", sequence_number); // IS THIS RIGHT?
           n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
           if (n < 0)  
@@ -282,7 +285,7 @@ int main(int argc, char *argv[])
 
           //respond to client
           bzero(buffer, buffer_size);
-          EncodeTCPHeader(buffer, file_data,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          EncodeTCPHeader(buffer, file_data, 0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
           printf("Sending packet %d WND FIN\n", sequence_number); // IS THIS RIGHT?
           n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
           if (n < 0)  
