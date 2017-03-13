@@ -29,7 +29,7 @@ void DecodeTCPHeader(char* msgp, char* data,unsigned int* sequence_number, unsig
   
   printf("srv_seq_rec: %d\n", *sequence_number ); //debugging
   printf("srv_ack_rec: %d\n", *acknowledgement_number ); //debugging
-  printf("srv_SYN_rec: %u\n\n", *SYN);
+  printf("srv_SYN_rec: %u\n", *SYN);
   return;
 }
 
@@ -37,7 +37,7 @@ void DecodeTCPHeader(char* msgp, char* data,unsigned int* sequence_number, unsig
 void EncodeTCPHeader(char* msgp,char* data ,unsigned int sequence_number, unsigned int acknowledgement_number, unsigned short ACK, unsigned short SYN, unsigned short FIN, unsigned short window_size){
   printf("srv_seq_sent: %u\n",sequence_number);
   printf("srv_ack_sent: %u\n",acknowledgement_number);
-  printf("srv_SYN_sent: %u\n\n",SYN );
+  printf("srv_SYN_sent: %u\n",SYN );
   memset(msgp, 0, 1024); //set header to 0
   memcpy(msgp, &sequence_number, 4);
   memcpy(msgp+4,&acknowledgement_number, 4);
@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
   fd_set active_fd_set; // set for holding sockets
 
   if (argc < 2) {
-    fprintf(stderr,"ERROR, no port provided\n");
+    fprintf(stderr,"usage: %s <port>\n", argv[0]);
     exit(1);
   }
   sockfd = socket(AF_INET, SOCK_DGRAM, 0);	//create socket -- UDP
@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
   char file_data[100];
   bzero(file_data ,100);
 
-  fp = fopen("file.txt" , "r");      
+     
   
   Timer.tv_sec = 0;
   Timer.tv_usec = rto_val;
@@ -125,13 +125,15 @@ int main(int argc, char *argv[])
     FD_ZERO(&active_fd_set);
     FD_SET(sockfd, &active_fd_set);
     clilen = sizeof(cli_addr);
-    n = select(sockfd + 1, &active_fd_set, NULL, NULL, &Timer);
+    //n = select(sockfd + 1, &active_fd_set, NULL, NULL, &Timer);
+    n = select(sockfd + 1, &active_fd_set, NULL, NULL, NULL); //don't use timer yet for testing
     
     if (n < 0) {
       close(sockfd);
       //ERROR OCCURED TODO: handle error
     } else if (n == 0 && handshake) { //timeout occured during handshake 
       //resend SYNACK to client
+        printf("Sending packet %d WND SYN\n", sequence_number); // IS THIS RIGHT?
         n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen); // can resend like this as we havent changed the values of anything in the buffer yet
         if (n < 0)  
         error("ERROR in three way handshake: sendto");
@@ -150,6 +152,7 @@ int main(int argc, char *argv[])
             error("ERROR recvfrom");
         
         DecodeTCPHeader(buffer, file_data, &sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
+        printf("Receiving packet %d\n", acknowledgement_number); // IS THIS RIGHT?
     
 
         if(SYN){ // THREE WAY HANDSHAKE
@@ -161,11 +164,12 @@ int main(int argc, char *argv[])
           
           acknowledgement_number = sequence_number + 1; 
         
-          sequence_number = 5000;
+          sequence_number = 0;
           handshake = 1;
           //respond to client
           bzero(buffer, buffer_size);
           EncodeTCPHeader(buffer, file_data,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          printf("Sending packet %d WND SYN\n", sequence_number); // IS THIS RIGHT?
           n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
           if (n < 0)  
             error("ERROR in three way handshake: sendto");
@@ -208,14 +212,44 @@ int main(int argc, char *argv[])
           if(handshake){
             //handshake complete at this point
             handshake = 0;
+            ACK = 0;
+            SYN = 0;
+            FIN = 0;  
+            // read filename from buffer
+            // open file if it exists
+            // start sedning data
+            
+            fp = fopen(buffer + 16 , "r"); 
+            if(fp == NULL){
+              //if it doesnt exist need to start closing connection?
+              error("File doesn't exist"); // Error checking, actually need to implement closing later
+            }
+
+
+              int i = 0;
+              for(;i<35;i++){ //Change upper limit later
+                 n = fread(file_data +i, 1,1,fp ); 
+                 if(n != 1){ //n != size of elements means we read whole file
+                  break;
+                 }
+
+              }
+              
+              bzero(buffer, buffer_size);
+              EncodeTCPHeader(buffer, file_data,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+              n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
+
+
+
+
           } else if(closing) {
             //Close server at this point
               close(sockfd);         
               return 0; 
 
           } else {
-            //this case should never happen on the server
-            error("Unexpected ACK");
+            //adjust window stuff
+          
           }
 
         }else if (FIN) { //CLOSING CONNECTION
@@ -225,12 +259,14 @@ int main(int argc, char *argv[])
           SYN = 0;
           FIN = 0;        
           
+          int tmp = acknowledgement_number;
           acknowledgement_number = sequence_number + 1;         
-          sequence_number = 5000; //CHANGE THIS
+          sequence_number = tmp; //CHANGE THIS
 
           //respond to client
           bzero(buffer, buffer_size);
           EncodeTCPHeader(buffer, file_data,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          printf("Sending packet %d WND\n", sequence_number); // IS THIS RIGHT?
           n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
           if (n < 0)  
             error("ERROR in three way handshake: sendto");
@@ -240,12 +276,14 @@ int main(int argc, char *argv[])
           SYN = 0;
           FIN = 1;        
           
-          acknowledgement_number = sequence_number + 1; //CHANGE THIS - WHAT SHOULD THIS BE        
-          sequence_number = 5000; //CHANGE THIS - WHAT SHOULD THIS BE       
+          //int tmp = acknowledgement_number;
+          //acknowledgement_number = sequence_number + 1; //CHANGE THIS - WHAT SHOULD THIS BE        
+          //sequence_number = tmp; //CHANGE THIS - WHAT SHOULD THIS BE       
 
           //respond to client
           bzero(buffer, buffer_size);
           EncodeTCPHeader(buffer, file_data,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          printf("Sending packet %d WND FIN\n", sequence_number); // IS THIS RIGHT?
           n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
           if (n < 0)  
             error("ERROR in three way handshake: sendto");
