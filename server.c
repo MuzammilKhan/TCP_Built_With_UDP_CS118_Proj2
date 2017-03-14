@@ -29,7 +29,7 @@ void DecodeTCPHeader(char* msgp, char* data, char *completed,unsigned short * by
   memcpy(bytes_read , msgp+16, 2);
   memcpy(completed , msgp+18, 1);
   
-  printf("Receiving Packet \n\n");
+  printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN);
  
   return;
 }
@@ -50,7 +50,7 @@ void EncodeTCPHeader(char* msgp,char* data , char completed,unsigned short  byte
   memcpy(msgp+18, &completed, 1);
    memcpy(msgp+19 , data, bytes_read);
    printf("completed: %c\n", completed);
-   printf("Sending Packet\n\n");
+   printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN);
   return;
 }
 
@@ -186,6 +186,7 @@ int main(int argc, char *argv[])
 //Pseudocode for tcp congestion control
   //TODO: all variables used in this need to be initialized somewhere before
   //TODO: need to consider case where ack may overflow 
+  //TODO : check cwnd < max sliding window size
 
           //Determine cwnd and ssthresh
           if(ss) { //Slow Start
@@ -257,14 +258,32 @@ int main(int argc, char *argv[])
             //retransmit lost packet
 
           } else {
-            //send packets according to cwnd
+            //find how many element to remove from sliding window
+            int i = 0;
+            for(; i < cwnd - 1; i++){
+              if(sliding_window[i] >= (acknowledgement_number - 1)){ // is sequence number >= ack number
+                break;
+              }
+            }
 
-            //remove elements we already have an ACK for from sliding window
-
-
-            //put in new sequence numbers to send in sliding window
-
-            //send new elements
+            //remove old elements
+            if(i != 0){
+              int j = 0;
+              for(; j < cwnd - 1; j++) {
+                if( (j < i) && ((j + i) < (cwnd -1)) ){ //shift array left
+                    sliding_window[j] = sliding_window[j + i];                
+                }else { //load new packets into sliding window and send them
+                  //load new sequence numbers 
+                  if(j != 0){
+                    sliding_window[j] = sliding_window[j-1] + 1;
+                  }else {
+                    sliding_window[j] = acknowledgement_number - 1;
+                  }
+                  //send packet accordingly
+                  //sendto(blah blah blah) ;
+                }
+              }
+            }
 
           }
 

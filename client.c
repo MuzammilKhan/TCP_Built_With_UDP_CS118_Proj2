@@ -36,7 +36,7 @@ void DecodeTCPHeader(char* msgp, char* data , char* completed ,unsigned short * 
   memcpy(bytes_read, msgp+16, 2);
   memcpy(completed, msgp+18, 1);  
   memcpy(data, msgp+19, 1000);
-   printf("Receiving Packet \n" ); 
+  printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN); 
    printf("completed: %c\n\n", *completed);   
   
   return;
@@ -57,7 +57,7 @@ void EncodeTCPHeader(char* msgp, char* data ,char completed ,unsigned short  byt
    memcpy(msgp+18, &completed ,1);
    memcpy(msgp+19 , data, bytes_read);
    
-   printf("Sending Packet \n\n");
+  printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN);
   
   return;
 }
