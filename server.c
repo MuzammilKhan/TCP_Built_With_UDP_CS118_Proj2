@@ -16,6 +16,13 @@ void error(char *msg)
   exit(1);
 }
 
+int max(int a, int b){
+  if (a > b)
+    return a;
+  else
+    return b;
+}
+
 /*Decode basic "TCP header" at msgp and get desired values. Following data types chosen so that encoding is easy later. Using referenced
 data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
 void DecodeTCPHeader(char* msgp, char* data, char *completed,unsigned short * bytes_read ,unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned short* ACK, unsigned short* SYN, unsigned short* FIN, unsigned short* window_size){
@@ -64,6 +71,17 @@ int main(int argc, char *argv[])
   int window_size_req = 5120; //bytes
   int rto_val = 500 * 1000; //retransmission timeout value (ms) but select uses us, so we multiply by 1000
   char completed = '0';
+  int cwnd = 1;
+  int ssthresh = (window_size_req/max_packet_length) * 3 / 4; // TODO: Test this value
+  int ss = 1;
+  int ca = 0;
+  int fastretransmit = 0;
+  int fastrecovery = 0;
+  int duplicate_ack_count = 0;
+  int ca_acks_count = 0;
+  int retransmit_packet = 0;
+  int sliding_window[window_size_req/max_packet_length];
+
   //timer
   struct timeval Timer;
 
@@ -101,10 +119,11 @@ int main(int argc, char *argv[])
   unsigned short destination;
   unsigned int sequence_number;
   unsigned int acknowledgement_number;
+  unsigned int prev_acknowledgement_number = -1;
   unsigned short ACK;
   unsigned short SYN;
   unsigned short FIN;
-  unsigned short window_size = window_size_req; // change
+  unsigned short window_size = window_size_req/max_packet_length; // change
   unsigned short bytes_read = 0;
   struct hostent *hostp;
   int handshake = 0;
@@ -186,14 +205,14 @@ int main(int argc, char *argv[])
 //Pseudocode for tcp congestion control
   //TODO: all variables used in this need to be initialized somewhere before
   //TODO: need to consider case where ack may overflow 
-  //TODO : check cwnd < max sliding window size
 
           //Determine cwnd and ssthresh
           if(ss) { //Slow Start
             if(acknowledgement_number > prev_acknowledgement_number ){
               prev_acknowledgement_number = acknowledgement_number;
               duplicate_ack_count = 0;
-              cwnd = cwnd + 1;
+              if(cwnd < window_size)
+                cwnd = cwnd + 1;
               if(cwnd > ssthresh){
                 ss = 0;
                 ca = 1;
@@ -215,7 +234,8 @@ int main(int argc, char *argv[])
               ca_acks_count = ca_acks_count + 1;
               if(cwnd == ca_acks_count){
                 ca_acks_count = 0;
-                cwnd = cwnd + 1;
+                if(cwnd < window_size)
+                  cwnd = cwnd + 1;
               }             
             } else{
               duplicate_ack_count = duplicate_ack_count + 1;
@@ -223,12 +243,12 @@ int main(int argc, char *argv[])
                 duplicate_ack_count = 0;
                 ca = 0;
                 fastretransmit = 1;
-                goto fastretransmit_label
+                goto fastretransmit_label;
               }             
             }
 
           }else if (fastretransmit){ //Fast Retransmit
-            fastretransmit_label;
+            fastretransmit_label:
             ssthresh = max(cwnd/2 , 2); //cwnd/2 should automatically floor in C
             ssthresh = ssthresh + 3;
             retransmit_packet = 1;
@@ -243,7 +263,8 @@ int main(int argc, char *argv[])
                 cwnd = ssthresh;
                 ss = 1;
               }else{ //duplicate ack
-                cwnd = cwnd + 1;
+                if(cwnd < window_size)
+                  cwnd = cwnd + 1;
               }
 
           } else { //Error checking - should never be entered
@@ -265,22 +286,29 @@ int main(int argc, char *argv[])
                 break;
               }
             }
+            int old_elements = i;
 
-            //remove old elements
-            if(i != 0){
+            //shift received elements out of window
+            for(; i > 0; i--){ 
               int j = 0;
-              for(; j < cwnd - 1; j++) {
-                if( (j < i) && ((j + i) < (cwnd -1)) ){ //shift array left
-                    sliding_window[j] = sliding_window[j + i];                
-                }else { //load new packets into sliding window and send them
-                  //load new sequence numbers 
+              for(; j < cwnd - 2; j++){
+                sliding_window[j] = sliding_window[j + 1];
+              }
+            }
+
+            if(old_elements != 0){
+              int j = 0;
+              for(; j < cwnd - 1; j++){
+                if(j > old_elements){
                   if(j != 0){
                     sliding_window[j] = sliding_window[j-1] + 1;
+
+                    //TODO: Send this packet, check if its the last packer
                   }else {
                     sliding_window[j] = acknowledgement_number - 1;
+
+                    //TODO: Send this packet, check if its the last packet
                   }
-                  //send packet accordingly
-                  //sendto(blah blah blah) ;
                 }
               }
             }
