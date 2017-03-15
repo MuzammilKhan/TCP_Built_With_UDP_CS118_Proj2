@@ -36,8 +36,8 @@ void DecodeTCPHeader(char* msgp, char* data , char* completed ,unsigned short * 
   memcpy(bytes_read, msgp+16, 2);
   memcpy(completed, msgp+18, 1);  
   memcpy(data, msgp+19, 1000);
-  printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN); 
-   
+  //printf("Receiving Packet SEQ#: %d\n\n"   ,*sequence_number ); 
+   printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN);
   return;
 }
 
@@ -55,8 +55,9 @@ void EncodeTCPHeader(char* msgp, char* data ,char completed ,unsigned short  byt
    memcpy(msgp+16, &bytes_read ,2);
    memcpy(msgp+18, &completed ,1);
    memcpy(msgp+19 , data, bytes_read);
-   
-  printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN);
+    printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN);
+
+  //printf("Sending Packet ACK#: %d\n\n"   ,acknowledgement_number);
   
   return;
 }
@@ -138,7 +139,7 @@ int main(int argc, char **argv) {
 
 
       int ooo_pkts =  0;
-      int expected_seq_num = 4*1024;
+      int expected_seq_num = 1025;
       //we are using a hard coded port for our application so source = dest port
       source = portno;
       destination = source;
@@ -216,7 +217,6 @@ int main(int argc, char **argv) {
                     error("ERROR recvfrom");
                 
                 DecodeTCPHeader(buf, file_data, &completed,&bytes_read,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
-                
 
                 if(SYN && ACK) {
                   //reply with ACK & filename
@@ -224,9 +224,11 @@ int main(int argc, char **argv) {
                   SYN = 0;
                   FIN = 0;
                     
-                  int tmp = acknowledgement_number;      
-                  acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
-                  sequence_number = tmp; // CHANGE THIS
+                 // int tmp = acknowledgement_number;      
+                  //acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
+                  //sequence_number = tmp; // CHANGE THIS
+                  acknowledgement_number = 1;
+                  sequence_number = 1;
 
                   bzero(buf, BUFSIZE);
                   EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
@@ -277,20 +279,21 @@ int main(int argc, char **argv) {
                   //if expected seq_num == seq_num, write to file
                   //else write to buffer in correct order. 
                   //initial seq num = 3
-                  printf("seq_num: %d   ack_num: %d bytes_read: %u\n\n",sequence_number,acknowledgement_number,bytes_read );
-                    expected_seq_num = sequence_number;
-
+                  printf("seq_num: %d   ack_num: %d bytes_read: %u  expected_seq_num: %d \n\n",sequence_number,acknowledgement_number,bytes_read, expected_seq_num );
+                    //expected_seq_num = sequence_number;
+                  //TODO: check for off by one cases. Check for seg faults. Check for max seq num
 
                   if(expected_seq_num == sequence_number){  
                     fwrite(file_data , 1 , bytes_read , fp);
-                      expected_seq_num = acknowledgement_number +1;
+                      expected_seq_num = sequence_number +1 + 1024;
+                      acknowledgement_number = sequence_number + 1;
 
                     int i = 0;
                     for(;i < d_buffer_size - 1000; i++){
                       data_buffer[i] = data_buffer[i+1000];
                     }
                     
-                    bzero(data_buffer+ ((w_size_num - 1) *1000) , 1000);
+                    bzero(data_buffer + ((w_size_num - 1) *1000) , 1000);
 
                     for( i = 0; i < w_size_num ; i++){
                       ooo_pkts_array[i] = ooo_pkts_array[i+1];
@@ -308,6 +311,9 @@ int main(int argc, char **argv) {
                       }
                     }
 
+                    int tmp = acknowledgement_number;
+                    acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
+                    sequence_number += 1024 ; // CHANGE THIS
                     
                   }
                   else{
@@ -315,8 +321,13 @@ int main(int argc, char **argv) {
                     int diff_index = (sequence_number - expected_seq_num)/1024;
                     ooo_pkts++;
                     ooo_pkts_array[diff_index] = 1;
-                    memcpy(data_buffer+(diff * 1000) , file_data ,1000);
+                    memcpy(data_buffer+(diff_index * 1000) , file_data ,1000);
                     bytes_ood_pkts[diff_index] = bytes_read;
+                    
+                    int tmp = acknowledgement_number;
+                    acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
+                    sequence_number = sequence_number + 1024; // CHANGE THIS
+
                   }
 
                   
@@ -324,9 +335,7 @@ int main(int argc, char **argv) {
                   SYN = 0;
                   FIN = 0;
                         
-                  int tmp = acknowledgement_number;
-                  acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
-                  sequence_number = tmp; // CHANGE THIS
+                  
 
                   bzero(buf, BUFSIZE);
                   EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);

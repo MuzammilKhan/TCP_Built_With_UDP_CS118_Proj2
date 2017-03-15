@@ -28,10 +28,9 @@ void DecodeTCPHeader(char* msgp, char* data, char *completed,unsigned short * by
   memcpy(window_size, msgp+14, 2);
   memcpy(bytes_read , msgp+16, 2);
   memcpy(completed , msgp+18, 1);
+  //printf("Receiving Packet ACK#: %d\n\n"   ,*acknowledgement_number );
+   printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN);
   
- 
-  printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN);
- 
   return;
 }
 
@@ -50,7 +49,7 @@ void EncodeTCPHeader(char* msgp,char* data , char completed,unsigned short  byte
   memcpy(msgp+16, &bytes_read, 2);
   memcpy(msgp+18, &completed, 1);
    memcpy(msgp+19 , data, bytes_read);
-   
+  //printf("Sending Packet  SEQ#: %d\n\n", sequence_number);
    printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN);
   return;
 }
@@ -164,7 +163,7 @@ int main(int argc, char *argv[])
           FIN = 0;
           
           
-          acknowledgement_number = sequence_number + 1; 
+          acknowledgement_number = 1024; 
         
           sequence_number = 0;
           handshake = 1;
@@ -199,13 +198,15 @@ int main(int argc, char *argv[])
               error("File doesn't exist"); // Error checking, actually need to implement closing later
             }
              
-            sequence_number = 3;
-            acknowledgement_number = 4;
-            bzero(buffer, buffer_size);
+            //sequence_number = 1024;
+            //acknowledgement_number = 1024;
+            //bzero(buffer, buffer_size);
             bzero(file_data, 1000);
-            EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-            n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
+            //EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+            //n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
 
+            acknowledgement_number = 1;
+            sequence_number = 1;
 
             while(completed != '1'){
               bytes_read = 0;
@@ -221,9 +222,12 @@ int main(int argc, char *argv[])
                  
               }
               int tmp = acknowledgement_number;      
-              acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
-              sequence_number = tmp; // CHANGE THIS
-              
+              //acknowledgement_number = sequence_number; // WHAT ABOUT THIS ONE? dont care about this        
+              sequence_number = acknowledgement_number + 1024; // CHANGE THIS
+              ACK = 0;
+              SYN = 0;
+              FIN = 0;
+              printf("seq: %d\n", sequence_number);
               EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
               n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
 
@@ -232,12 +236,12 @@ int main(int argc, char *argv[])
               }
 
                bzero(buffer, buffer_size);
-                n = recvfrom(sockfd, buffer, buffer_size, 0, (struct sockaddr *) &cli_addr, &clilen);
+               n = recvfrom(sockfd, buffer, buffer_size, 0, (struct sockaddr *) &cli_addr, &clilen);
                 if(n < 0)
                     error("ERROR recvfrom");
                 
-                //DecodeTCPHeader(buffer, file_data,&completed ,&bytes_read ,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
-              
+              DecodeTCPHeader(buffer, file_data,&completed ,&bytes_read ,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
+               printf("Got here\n");   
             }
 
 

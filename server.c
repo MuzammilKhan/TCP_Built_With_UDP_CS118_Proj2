@@ -56,7 +56,7 @@ void EncodeTCPHeader(char* msgp,char* data , char completed,unsigned short  byte
   memcpy(msgp+16, &bytes_read, 2);
   memcpy(msgp+18, &completed, 1);
    memcpy(msgp+19 , data, bytes_read);
-   printf("completed: %c\n", completed);
+  
    printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN);
   return;
 }
@@ -265,10 +265,11 @@ int main(int argc, char *argv[])
 
                 } else {
                   cwnd = 5; // TODO: DELETE THIS LINE!!!!
-
+                  //TODO. sliding window is not being initialized. hence old_elements is 0 and the if statement is not entered. check for max seq number
                   //find how many element to remove from sliding window
                   int i = 0;
                   for(; i < cwnd - 1; i++){
+                    printf("i: %d\n",i );
                     if(sliding_window[i] >= (acknowledgement_number - 1)){ // is sequence number >= ack number
                       break;
                     }
@@ -284,6 +285,7 @@ int main(int argc, char *argv[])
                   }
 
                   if(old_elements != 0){
+                    printf("GOt here\n");
                     int j = 0;
                     for(; j < cwnd - 1; j++){
                       if(j > old_elements){
@@ -311,6 +313,7 @@ int main(int argc, char *argv[])
                         ACK = 0;
                         SYN = 0;
                         FIN = 0;
+                        
                         EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
                         n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
 
