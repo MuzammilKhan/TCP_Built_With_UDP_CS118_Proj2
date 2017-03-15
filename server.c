@@ -224,6 +224,8 @@ int main(int argc, char *argv[])
               error("File doesn't exist"); // Error checking, actually need to implement closing later
             }
 
+            goto data_transfer_label;
+
             } else if(closing) {
               //Close server at this point
                 close(sockfd);         
@@ -231,7 +233,8 @@ int main(int argc, char *argv[])
 
             } else {
               //Data Transfer
-
+                data_transfer_label:
+                
                 //send packets
                 if(retransmit_packet){
                   retransmit_packet = 0;
