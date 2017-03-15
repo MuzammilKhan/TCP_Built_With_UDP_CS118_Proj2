@@ -205,10 +205,20 @@ int main(int argc, char *argv[])
 
           if(completed == '1' && acknowledgement_number == last_file_ack_number){
             //TODO: Have server start connection teardown 
-          }
-        
+                      printf("Sending client FIN\n");
+                      FIN = 1;
+                      ACK = 0;
+                      SYN = 0;
+                    EncodeTCPHeader(buffer, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                    n = sendto(sockfd, buffer, sizeof(buffer), 0, (const struct sockaddr* ) &cli_addr, clilen);
+                    if (n < 0)  
+                      error("ERROR in FIN init");
 
-          if(handshake){
+                    closing = 1;
+
+
+
+          }else if(handshake){
             //handshake complete at this point
             handshake = 0;
             ACK = 0;
@@ -266,9 +276,8 @@ int main(int argc, char *argv[])
             goto data_transfer_label;
 
             } else if(closing) {
-              //Close server at this point
-                close(sockfd);         
-                return 0; 
+   
+
 
             } else {
               //Data Transfer
@@ -371,57 +380,23 @@ int main(int argc, char *argv[])
               }
 
         }else if (FIN) { //CLOSING CONNECTION
-          //TODO: closing stuff
-          printf("In FIN in server.\n");
-          closing = 1;
-          ACK = 1;
-          SYN = 0;
-          FIN = 0;        
-          
-          int tmp = acknowledgement_number;
-          acknowledgement_number = sequence_number + 1;         
-          sequence_number = tmp; //CHANGE THIS
 
-          //respond to client
-          bzero(buffer, buffer_size);
-          EncodeTCPHeader(buffer, file_data,completed ,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-          n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
-          if (n < 0)  
-            error("ERROR in three way handshake: sendto");
+                      FIN = 0;
+                      ACK = 1;
+                      SYN = 0;
+                    EncodeTCPHeader(buffer, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                    n = sendto(sockfd, buffer, sizeof(buffer), 0, (const struct sockaddr* ) &cli_addr, clilen);
+                    if (n < 0)  
+                      error("ERROR in FIN init");
 
-          //close wait stuff????
-          ACK = 0;
-          SYN = 0;
-          FIN = 1;        
-          
-          //int tmp = acknowledgement_number;
-          //acknowledgement_number = sequence_number + 1; //CHANGE THIS - WHAT SHOULD THIS BE        
-          //sequence_number = tmp; //CHANGE THIS - WHAT SHOULD THIS BE       
+                    //TODO: - DO TIMED WAIT stuff
+                  Timer.tv_sec = 0; //reset timer
+                  Timer.tv_usec = 2 * rto_val; 
 
-          //respond to client
-          bzero(buffer, buffer_size);
-          EncodeTCPHeader(buffer, file_data, completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-          n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
-          if (n < 0)  
-            error("ERROR in three way handshake: sendto");
-          
-          Timer.tv_sec = 0; //reset timer
-          Timer.tv_usec = rto_val;
-          bzero(buffer, buffer_size);
-          n = recvfrom(sockfd, buffer, buffer_size, 0, (struct sockaddr *) &cli_addr, &clilen);
-          if(n < 0)
-              error("ERROR recvfrom");
-          
-          DecodeTCPHeader(buffer, file_data,&completed ,&bytes_read ,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
-          
-          if(ACK == 1){
-            printf("Recvd client ACK and closing socket\n");
-            close(sockfd);
-            fclose(fp);
-            return 0;
-
-          }
-
+                  //after timed wait
+                  fclose(fp);
+                  close(sockfd);
+                  return 0;
 
         } else { 
 

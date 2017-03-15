@@ -245,31 +245,45 @@ int main(int argc, char **argv) {
                   Timer.tv_usec = rto_val;   
                 } else if (ACK) {
                   if(closing) { 
-                          // what to do here?
+                    fclose(fp);
+                    close(sockfd);         
+                    return 0;                           
                   } else {
-
+                    // what to do here?
 
                   }
 
                 } else if (FIN) {
-                  //send ack to server and begin timed wait with 2* RTO
                   ACK = 1;
                   SYN = 0;
                   FIN = 0;
-                  
-                  int tmp = acknowledgement_number;       
+                  closing = 1;
+                        
                   acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
-                  sequence_number = tmp; // CHANGE THIS
+                  sequence_number  += max_packet_length; // CHANGE THIS
 
                   bzero(buf, BUFSIZE);
                   EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
                   n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
                   if (n < 0)  
-                    error("ERROR in three way handshake: sendto");
+                    error("ERROR in closing - client: sendto");
+
+                  ACK = 0;
+                  SYN = 0;
+                  FIN = 1;
+                        
+                  //acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
+                  sequence_number += max_packet_length; // CHANGE THIS
+
+                  bzero(buf, BUFSIZE);
+                  EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                  n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
+                  if (n < 0)  
+                    error("ERROR in three way closing - client: sendto");
 
                   firsttransmission = 0;
                   Timer.tv_sec = 0; //reset timer
-                  Timer.tv_usec = 2 * rto_val; //FIX THIS VALUE
+                  Timer.tv_usec = rto_val; 
 
                 } else {
                   
@@ -313,7 +327,7 @@ int main(int argc, char **argv) {
 
                     int tmp = acknowledgement_number;
                     acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
-                    sequence_number += 1024 ; // CHANGE THIS
+                    sequence_number += max_packet_length ; // CHANGE THIS
                     
                   }
                   else{
@@ -348,49 +362,6 @@ int main(int argc, char **argv) {
                   Timer.tv_usec = rto_val; 
 
 
-                  if(completed == '1'){
-                  		printf("Sending client FIN\n");
-                  		FIN = 1;
-                  		ACK = 0;
-                  		SYN = 0;
-					          EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-	                  n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
-	                  if (n < 0)  
-	                    error("ERROR in FIN init");
-
-	                   bzero(buf, BUFSIZE);
-		                n = recvfrom(sockfd, buf, BUFSIZE, 0, (struct sockaddr *) &serveraddr, &serverlen);
-		                if(n < 0)
-		                    error("ERROR recvfrom");
-		                
-		                DecodeTCPHeader(buf, file_data, &completed,&bytes_read,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
-		                
-		                if(ACK == 1 && FIN == 0){
-		                	bzero(buf, BUFSIZE);
-			                printf("Recvd server ACK\n");
-			                n = recvfrom(sockfd, buf, BUFSIZE, 0, (struct sockaddr *) &serveraddr, &serverlen);
-			                if(n < 0)
-			                    error("ERROR recvfrom");
-			                
-			                DecodeTCPHeader(buf, file_data, &completed,&bytes_read,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
-			                
-			                if(FIN == 1){
-			                	printf("Recvd server FIN\n");
-			                	  FIN = 0;
-		                  		ACK = 1;
-		                  		SYN = 0;
-        							  printf("Sending client ACK\n");
-        							  EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-			                  n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
-			                  if (n < 0)  
-			                    error("ERROR in FIN init");
-			                fclose(fp);
-			                return 0 ;
-
-			                }
-		                }
-
-                  }
                 }
 
     
