@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
 
 
       int ooo_pkts =  0;
-      int expected_seq_num = 1025;
+      int expected_seq_num = 1024;
       //we are using a hard coded port for our application so source = dest port
       source = portno;
       destination = source;
@@ -228,7 +228,7 @@ int main(int argc, char **argv) {
                   //acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
                   //sequence_number = tmp; // CHANGE THIS
                   acknowledgement_number = 1;
-                  sequence_number = 1;
+                  sequence_number = max_packet_length;
 
                   bzero(buf, BUFSIZE);
                   EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);

@@ -224,6 +224,45 @@ int main(int argc, char *argv[])
               error("File doesn't exist"); // Error checking, actually need to implement closing later
             }
 
+              //initialize the sliding window
+            cwnd = 5;
+                    int j = 0;
+                    for(; j < cwnd - 1; j++){
+                        if(j != 0){
+                          sliding_window[j] = sliding_window[j-1] + max_packet_length;
+                        }else {
+                          sliding_window[j] = sequence_number;
+                        }
+                        //send corresponding packet
+                        int bytes_read = 0;
+                        int i = 0;
+                        for(;i<1000;i++){ //Change upper limit later
+                            n = fread(file_data +i, 1,1,fp ); 
+                            if(n != 1){ //n != size of elements means we read whole file
+                              completed ='1';
+                              last_file_ack_number = sliding_window[j] + 1; //Set last file ack number here
+                              break;
+                            }
+                            bytes_read++;
+                             
+                        }     
+                        
+                        sequence_number = sliding_window[j]; 
+                        latest_sequence_number = sequence_number;
+                        ACK = 0;
+                        SYN = 0;
+                        FIN = 0;
+                        
+                        EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                        n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
+
+                        if(completed == '1'){
+                          break;
+                        }
+
+                    }
+            
+
             goto data_transfer_label;
 
             } else if(closing) {
@@ -274,10 +313,12 @@ int main(int argc, char *argv[])
                       break;
                     }
                   }
+                 // printf("finished first loop\n");
                   int old_elements = i;
 
                   //shift received elements out of window
                   for(; i > 0; i--){ 
+                    printf("i: %d\n",i );
                     int j = 0;
                     for(; j < cwnd - 2; j++){
                       sliding_window[j] = sliding_window[j + 1];
