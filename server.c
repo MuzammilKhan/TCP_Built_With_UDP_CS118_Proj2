@@ -95,20 +95,6 @@ int main(int argc, char *argv[])
   char buffer[buffer_size];			 
   memset(buffer, 0, buffer_size);	//reset memory
 
-  unsigned short source; 
-  unsigned short destination;
-  unsigned int sequence_number;
-  unsigned int acknowledgement_number;
-  unsigned int prev_acknowledgement_number = -1;
-  unsigned short ACK;
-  unsigned short SYN;
-  unsigned short FIN;
-  unsigned short window_size = window_size_req/max_packet_length; // change
-  unsigned short bytes_read = 0;
-  struct hostent *hostp;
-  int handshake = 0;
-  int closing = 0;  
-  FILE *fp;
   // restrictions for our TCP implementation
   int max_packet_length = 1024; //includes header, in bytes
   int max_sequence_number = 30720; //bytes    
@@ -125,6 +111,21 @@ int main(int argc, char *argv[])
   int ca_acks_count = 0;
   int retransmit_packet = 0;
   int sliding_window[window_size_req/max_packet_length];
+  unsigned short source; 
+  unsigned short destination;
+  unsigned int sequence_number;
+  unsigned int acknowledgement_number;
+  unsigned int prev_acknowledgement_number = -1;
+  unsigned short ACK;
+  unsigned short SYN;
+  unsigned short FIN;
+  unsigned short window_size = window_size_req/max_packet_length; // change
+  unsigned short bytes_read = 0;
+  struct hostent *hostp;
+  int handshake = 0;
+  int closing = 0;  
+  FILE *fp;
+
 
   unsigned int last_file_ack_number = 0; //set when last data packet from file sent out
   unsigned int latest_sequence_number = 0;
@@ -222,47 +223,6 @@ int main(int argc, char *argv[])
               //if it doesnt exist need to start closing connection?
               error("File doesn't exist"); // Error checking, actually need to implement closing later
             }
-             
-            sequence_number = 3;
-            acknowledgement_number = 4;
-            bzero(buffer, buffer_size);
-            bzero(file_data, 1000);
-            EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-            n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
-
-
-            while(completed != '1'){
-              bytes_read = 0;
-              int i = 0;
-              
-              for(;i<1000;i++){ //Change upper limit later
-                 n = fread(file_data +i, 1,1,fp ); 
-                 if(n != 1){ //n != size of elements means we read whole file
-                  completed ='1';
-                  break;
-                 }
-                 bytes_read++;
-                 
-              }
-              int tmp = acknowledgement_number;      
-              acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
-              sequence_number = tmp; // CHANGE THIS
-              
-              EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-              n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
-
-              if(completed == '1'){
-                break;
-              }
-
-               bzero(buffer, buffer_size);
-                n = recvfrom(sockfd, buffer, buffer_size, 0, (struct sockaddr *) &cli_addr, &clilen);
-                if(n < 0)
-                    error("ERROR recvfrom");
-                
-                //DecodeTCPHeader(buffer, file_data,&completed ,&bytes_read ,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
-              
-            }
 
             } else if(closing) {
               //Close server at this point
@@ -271,87 +231,22 @@ int main(int argc, char *argv[])
 
             } else {
               //Data Transfer
-                //Determine cwnd and ssthresh
-                if(ss) { //Slow Start
-                  if(acknowledgement_number > prev_acknowledgement_number ){
-                    prev_acknowledgement_number = acknowledgement_number;
-                    duplicate_ack_count = 0;
-                    if(cwnd < window_size)
-                      cwnd = cwnd + 1;
-                    if(cwnd > ssthresh){
-                      ss = 0;
-                      ca = 1;
-                    }
-                  }else {
-                    duplicate_ack_count = duplicate_ack_count + 1;
-                    if(duplicate_ack_count == 3) { // go to fast retransmit
-                      duplicate_ack_count = 0;
-                      ss = 0;
-                      fastretransmit = 1;
-                      goto fastretransmit_label;
-                    }
-                  } 
-
-                }else if (ca) { //Congestion Avoidance
-                  if(acknowledgement_number > prev_acknowledgement_number ){
-                    prev_acknowledgement_number = acknowledgement_number;
-                    duplicate_ack_count = 0;
-                    ca_acks_count = ca_acks_count + 1;
-                    if(cwnd == ca_acks_count){
-                      ca_acks_count = 0;
-                      if(cwnd < window_size)
-                        cwnd = cwnd + 1;
-                    }             
-                  } else{
-                    duplicate_ack_count = duplicate_ack_count + 1;
-                    if(duplicate_ack_count == 3) { // go to fast retransmit
-                      duplicate_ack_count = 0;
-                      ca = 0;
-                      fastretransmit = 1;
-                      goto fastretransmit_label;
-                    }             
-                  }
-
-                }else if (fastretransmit){ //Fast Retransmit
-                  fastretransmit_label:
-                  ssthresh = max(cwnd/2 , 2); //cwnd/2 should automatically floor in C
-                  ssthresh = ssthresh + 3;
-                  retransmit_packet = 1;
-                  fastretransmit = 0;
-                  fastrecovery = 1;
-
-                }else if (fastrecovery){ //Fast Recovery
-                    if(acknowledgement_number > prev_acknowledgement_number) {
-                      prev_acknowledgement_number = acknowledgement_number;
-                      duplicate_ack_count = 0;
-                      fastrecovery = 0;
-                      cwnd = ssthresh;
-                      ss = 1;
-                    }else{ //duplicate ack
-                      if(cwnd < window_size)
-                        cwnd = cwnd + 1;
-                    }
-
-                } else { //Error checking - should never be entered
-                  //error - we should never enter this
-                }
-                //cwnd and ssthresh determined by this point
-
 
                 //send packets
                 if(retransmit_packet){
                   retransmit_packet = 0;
                   //retransmit lost packet
-                  unsigned int dropped_seq = sliding_window[j];
+                  unsigned int dropped_seq = 0;
                   //If we are going to have timeout come here then we need a way to check that and if so update dropped_seq accordingly AND FLAGS somehow
                   fseek(fp, dropped_seq - latest_sequence_number, SEEK_CUR);
                   //send corresponding packet
                   int bytes_read = 0;
+                  int i = 0;
                   for(;i<1000;i++){ //Change upper limit later
                     n = fread(file_data +i, 1,1,fp ); 
                     if(n != 1){ //n != size of elements means we read whole file
                       completed ='1';
-                      last_file_ack_number = sliding_window[j] + 1; //Set last file ack number here
+                      //last_file_ack_number = sliding_window[j] + 1; //Set last file ack number here
                       break;
                     }
                   bytes_read++;         
@@ -362,10 +257,12 @@ int main(int argc, char *argv[])
                   FIN = 0;
                   EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
                   n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
-                  fseek(fp, latest_sequence_number - dropped_seq, SEEK_CUR);
+                  fseek(fp, latest_sequence_number - dropped_seq + bytes_read, SEEK_CUR);
 
 
                 } else {
+                  cwnd = 5; // TODO: DELETE THIS LINE!!!!
+
                   //find how many element to remove from sliding window
                   int i = 0;
                   for(; i < cwnd - 1; i++){
@@ -423,8 +320,7 @@ int main(int argc, char *argv[])
                   }
 
                 }
-            
-            }//end
+              }
 
         }else if (FIN) { //CLOSING CONNECTION
           //TODO: closing stuff
