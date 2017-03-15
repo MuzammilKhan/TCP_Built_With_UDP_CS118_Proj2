@@ -234,7 +234,7 @@ int main(int argc, char *argv[])
             } else {
               //Data Transfer
                 data_transfer_label:
-                
+
                 //send packets
                 if(retransmit_packet){
                   retransmit_packet = 0;
@@ -294,6 +294,7 @@ int main(int argc, char *argv[])
                         }
                         //send corresponding packet
                         int bytes_read = 0;
+                        i = 0;
                         for(;i<1000;i++){ //Change upper limit later
                             n = fread(file_data +i, 1,1,fp ); 
                             if(n != 1){ //n != size of elements means we read whole file
@@ -304,8 +305,8 @@ int main(int argc, char *argv[])
                             bytes_read++;
                              
                         }     
-                        acknowledgement_number = 0; // WHAT ABOUT THIS ONE? We need to figure out what value to put here    
-                        sequence_number = sliding_window[j]; // CHANGE THIS
+                        
+                        sequence_number = sliding_window[j]; 
                         latest_sequence_number = sequence_number;
                         ACK = 0;
                         SYN = 0;
