@@ -37,8 +37,7 @@ void DecodeTCPHeader(char* msgp, char* data , char* completed ,unsigned short * 
   memcpy(completed, msgp+18, 1);  
   memcpy(data, msgp+19, 1000);
   printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN); 
-   printf("completed: %c\n\n", *completed);   
-  
+   
   return;
 }
 
@@ -120,12 +119,19 @@ int main(int argc, char **argv) {
       unsigned short SYN;
       unsigned short FIN;
       unsigned short window_size = 5120;
+      unsigned short w_size_num = window_size/1024;
       unsigned short bytes_read = 0;
       int handshake = 1;
       int closing = 0;
       int timeout = 0;
       int firsttransmission = 1;
+      int d_buffer_size = w_size_num*1000;
+      char data_buffer[d_buffer_size];
+      bzero(data_buffer , d_buffer_size);
 
+
+      int ooo_pkts =  0;
+      int expected_seq_num = 4*1024
       //we are using a hard coded port for our application so source = dest port
       source = portno;
       destination = source;
@@ -258,16 +264,32 @@ int main(int argc, char **argv) {
 
                 } else {
                   
-                  printf("writing data to file\n");
+                  
                   int i = 0;
                   
-                  printf("file_data: %s\n",file_data );
-                  printf("num: %lu size: %lu\n",strlen(file_data) , sizeof(file_data) );
+                  //if expected seq_num == seq_num, write to file
+                  //else write to buffer in correct order. 
+                  //initial seq num = 3
+                  printf("seq_num: %d   ack_num: %d bytes_read: %u\n\n",sequence_number,acknowledgement_number,bytes_read );
+                    expected_seq_num = sequence_number;
+
+
+                  if(expected_seq_num == sequence_number){  
+                    fwrite(file_data , 1 , bytes_read , fp);
+                      expected_seq_num = acknowledgement_number +1;
+                   //int i = 0;
+                    //for(;i < d_buffer_size - 1000; i++){
+                    //  data_buffer[i] = data_buffer[i+1000];
+                    //}
+                    
+                  }
+                  else{
+                    int diff = sequence_number - expected_seq_num;
+                    ooo_pkts++;
+                    //memcpy(data_buffer+(diff * 1000) , file_data ,1000);
+                  }
+
                   
-                  fwrite(file_data , 1 , bytes_read , fp);
-                  
-                  //fclose(fp);
-                  //reply with ACK
                   ACK = 1;
                   SYN = 0;
                   FIN = 0;
@@ -282,6 +304,7 @@ int main(int argc, char **argv) {
                   if (n < 0)  
                     error("ERROR in three way handshake: sendto");
 
+                  
                   Timer.tv_sec = 0; //reset timer
                   Timer.tv_usec = rto_val; 
 
@@ -291,7 +314,7 @@ int main(int argc, char **argv) {
                   		FIN = 1;
                   		ACK = 0;
                   		SYN = 0;
-					  EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+					          EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
 	                  n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
 	                  if (n < 0)  
 	                    error("ERROR in FIN init");
@@ -314,11 +337,11 @@ int main(int argc, char **argv) {
 			                
 			                if(FIN == 1){
 			                	printf("Recvd server FIN\n");
-			                	FIN = 0;
+			                	  FIN = 0;
 		                  		ACK = 1;
 		                  		SYN = 0;
-							  printf("Sending client ACK\n");
-							  EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+        							  printf("Sending client ACK\n");
+        							  EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
 			                  n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
 			                  if (n < 0)  
 			                    error("ERROR in FIN init");
