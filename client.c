@@ -128,6 +128,13 @@ int main(int argc, char **argv) {
       int d_buffer_size = w_size_num*1000;
       char data_buffer[d_buffer_size];
       bzero(data_buffer , d_buffer_size);
+      int ooo_pkts_array [w_size_num];
+      int bytes_ood_pkts [w_size_num];
+      int x = 0;
+      for( ; x < w_size_num ; x++){
+        ooo_pkts_array[x] = 0;
+        bytes_ood_pkts[x] = 0;
+      }
 
 
       int ooo_pkts =  0;
@@ -277,16 +284,39 @@ int main(int argc, char **argv) {
                   if(expected_seq_num == sequence_number){  
                     fwrite(file_data , 1 , bytes_read , fp);
                       expected_seq_num = acknowledgement_number +1;
-                   //int i = 0;
-                    //for(;i < d_buffer_size - 1000; i++){
-                    //  data_buffer[i] = data_buffer[i+1000];
-                    //}
+
+                    int i = 0;
+                    for(;i < d_buffer_size - 1000; i++){
+                      data_buffer[i] = data_buffer[i+1000];
+                    }
+                    
+                    bzero(data_buffer+ ((w_size_num - 1) *1000) , 1000);
+
+                    for( i = 0; i < w_size_num ; i++){
+                      ooo_pkts_array[i] = ooo_pkts_array[i+1];
+                      bytes_ood_pkts[i] = bytes_ood_pkts[i+1];
+                    }
+                    ooo_pkts_array[w_size_num - 1] = 0;
+                    bytes_ood_pkts[w_size_num - 1] = 0;
+
+                    for(i = 0 ; i < w_size_num ; i++){
+                      if(ooo_pkts_array[i] == 1){
+                        fwrite(data_buffer + (i*1000) , 1 , bytes_ood_pkts[i] , fp);
+                      }
+                      else{
+                        break;
+                      }
+                    }
+
                     
                   }
                   else{
                     int diff = sequence_number - expected_seq_num;
+                    int diff_index = (sequence_number - expected_seq_num)/1024;
                     ooo_pkts++;
-                    //memcpy(data_buffer+(diff * 1000) , file_data ,1000);
+                    ooo_pkts_array[diff_index] = 1;
+                    memcpy(data_buffer+(diff * 1000) , file_data ,1000);
+                    bytes_ood_pkts[diff_index] = bytes_read;
                   }
 
                   
