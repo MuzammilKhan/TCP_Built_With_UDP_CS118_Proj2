@@ -65,26 +65,6 @@ void EncodeTCPHeader(char* msgp,char* data , char completed,unsigned short  byte
 
 int main(int argc, char *argv[])
 {
-  // restrictions for our TCP implementation
-  int max_packet_length = 1024; //includes header, in bytes
-  int max_sequence_number = 30720; //bytes    
-  int window_size_req = 5120; //bytes
-  int rto_val = 500 * 1000; //retransmission timeout value (ms) but select uses us, so we multiply by 1000
-  char completed = '0';
-  int cwnd = 1;
-  int ssthresh = (window_size_req/max_packet_length) * 3 / 4; // TODO: Test this value
-  int ss = 1;
-  int ca = 0;
-  int fastretransmit = 0;
-  int fastrecovery = 0;
-  int duplicate_ack_count = 0;
-  int ca_acks_count = 0;
-  int retransmit_packet = 0;
-  int sliding_window[window_size_req/max_packet_length];
-
-  //timer
-  struct timeval Timer;
-
   int sockfd, portno, pid;
   socklen_t clilen;
   struct sockaddr_in serv_addr, cli_addr;
@@ -127,9 +107,30 @@ int main(int argc, char *argv[])
   unsigned short bytes_read = 0;
   struct hostent *hostp;
   int handshake = 0;
-  int closing = 0;
-  
+  int closing = 0;  
   FILE *fp;
+  // restrictions for our TCP implementation
+  int max_packet_length = 1024; //includes header, in bytes
+  int max_sequence_number = 30720; //bytes    
+  int window_size_req = 5120; //bytes
+  int rto_val = 500 * 1000; //retransmission timeout value (ms) but select uses us, so we multiply by 1000
+  char completed = '0';
+  int cwnd = 1;
+  int ssthresh = (window_size_req/max_packet_length) * 3 / 4; // TODO: Test this value
+  int ss = 1;
+  int ca = 0;
+  int fastretransmit = 0;
+  int fastrecovery = 0;
+  int duplicate_ack_count = 0;
+  int ca_acks_count = 0;
+  int retransmit_packet = 0;
+  int sliding_window[window_size_req/max_packet_length];
+
+  unsigned int last_file_ack_number = 0; //set when last data packet from file sent out
+  unsigned int latest_sequence_number = 0;
+
+  //timer
+  struct timeval Timer;
  
   //we are using a hard coded port for our application so source = dest port
   source = portno;
@@ -173,7 +174,7 @@ int main(int argc, char *argv[])
             error("ERROR recvfrom");
         
         DecodeTCPHeader(buffer, file_data,&completed ,&bytes_read ,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
-        
+
 
         if(SYN){ // THREE WAY HANDSHAKE
          
@@ -200,131 +201,11 @@ int main(int argc, char *argv[])
 
         }else if (ACK) { //RECIEVED ACK
           //3 cases: part of 3 way handshake,  ack for closing, or ack for regular data,
-          //TODO: fill in how to handle ACKS
 
-//Pseudocode for tcp congestion control
-  //TODO: all variables used in this need to be initialized somewhere before
-  //TODO: need to consider case where ack may overflow 
-
-          //Determine cwnd and ssthresh
-          if(ss) { //Slow Start
-            if(acknowledgement_number > prev_acknowledgement_number ){
-              prev_acknowledgement_number = acknowledgement_number;
-              duplicate_ack_count = 0;
-              if(cwnd < window_size)
-                cwnd = cwnd + 1;
-              if(cwnd > ssthresh){
-                ss = 0;
-                ca = 1;
-              }
-            }else {
-              duplicate_ack_count = duplicate_ack_count + 1;
-              if(duplicate_ack_count == 3) { // go to fast retransmit
-                duplicate_ack_count = 0;
-                ss = 0;
-                fastretransmit = 1;
-                goto fastretransmit_label;
-              }
-            } 
-
-          }else if (ca) { //Congestion Avoidance
-            if(acknowledgement_number > prev_acknowledgement_number ){
-              prev_acknowledgement_number = acknowledgement_number;
-              duplicate_ack_count = 0;
-              ca_acks_count = ca_acks_count + 1;
-              if(cwnd == ca_acks_count){
-                ca_acks_count = 0;
-                if(cwnd < window_size)
-                  cwnd = cwnd + 1;
-              }             
-            } else{
-              duplicate_ack_count = duplicate_ack_count + 1;
-              if(duplicate_ack_count == 3) { // go to fast retransmit
-                duplicate_ack_count = 0;
-                ca = 0;
-                fastretransmit = 1;
-                goto fastretransmit_label;
-              }             
-            }
-
-          }else if (fastretransmit){ //Fast Retransmit
-            fastretransmit_label:
-            ssthresh = max(cwnd/2 , 2); //cwnd/2 should automatically floor in C
-            ssthresh = ssthresh + 3;
-            retransmit_packet = 1;
-            fastretransmit = 0;
-            fastrecovery = 1;
-
-          }else if (fastrecovery){ //Fast Recovery
-              if(acknowledgement_number > prev_acknowledgement_number) {
-                prev_acknowledgement_number = acknowledgement_number;
-                duplicate_ack_count = 0;
-                fastrecovery = 0;
-                cwnd = ssthresh;
-                ss = 1;
-              }else{ //duplicate ack
-                if(cwnd < window_size)
-                  cwnd = cwnd + 1;
-              }
-
-          } else { //Error checking - should never be entered
-            //error - we should never enter this
+          if(completed == '1' && acknowledgement_number == last_file_ack_number){
+            //TODO: Have server start connection teardown 
           }
-          //cwnd and ssthresh determined by this point
-
-
-          //send packets
-          if(retransmit_packet){
-            retransmit_packet = 0;
-            //retransmit lost packet
-
-          } else {
-            //find how many element to remove from sliding window
-            int i = 0;
-            for(; i < cwnd - 1; i++){
-              if(sliding_window[i] >= (acknowledgement_number - 1)){ // is sequence number >= ack number
-                break;
-              }
-            }
-            int old_elements = i;
-
-            //shift received elements out of window
-            for(; i > 0; i--){ 
-              int j = 0;
-              for(; j < cwnd - 2; j++){
-                sliding_window[j] = sliding_window[j + 1];
-              }
-            }
-
-            if(old_elements != 0){
-              int j = 0;
-              for(; j < cwnd - 1; j++){
-                if(j > old_elements){
-                  if(j != 0){
-                    sliding_window[j] = sliding_window[j-1] + 1;
-
-                    //TODO: Send this packet, check if its the last packer
-                  }else {
-                    sliding_window[j] = acknowledgement_number - 1;
-
-                    //TODO: Send this packet, check if its the last packet
-                  }
-                }
-              }
-            }
-
-          }
-
-
-
-//end pseudocode
-
-
-
-
-
-
-
+        
 
           if(handshake){
             //handshake complete at this point
@@ -341,8 +222,17 @@ int main(int argc, char *argv[])
               //if it doesnt exist need to start closing connection?
               error("File doesn't exist"); // Error checking, actually need to implement closing later
             }
+             
+            sequence_number = 3;
+            acknowledgement_number = 4;
+            bzero(buffer, buffer_size);
+            bzero(file_data, 1000);
+            EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+            n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
 
 
+            while(completed != '1'){
+              bytes_read = 0;
               int i = 0;
               
               for(;i<1000;i++){ //Change upper limit later
@@ -354,23 +244,187 @@ int main(int argc, char *argv[])
                  bytes_read++;
                  
               }
-              printf("bytes_read: %d\n", bytes_read );
-              bzero(buffer, buffer_size);
+              int tmp = acknowledgement_number;      
+              acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
+              sequence_number = tmp; // CHANGE THIS
+              
               EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
               n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
 
+              if(completed == '1'){
+                break;
+              }
+
+               bzero(buffer, buffer_size);
+                n = recvfrom(sockfd, buffer, buffer_size, 0, (struct sockaddr *) &cli_addr, &clilen);
+                if(n < 0)
+                    error("ERROR recvfrom");
+                
+                //DecodeTCPHeader(buffer, file_data,&completed ,&bytes_read ,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
+              
+            }
+
+            } else if(closing) {
+              //Close server at this point
+                close(sockfd);         
+                return 0; 
+
+            } else {
+              //Data Transfer
+                //Determine cwnd and ssthresh
+                if(ss) { //Slow Start
+                  if(acknowledgement_number > prev_acknowledgement_number ){
+                    prev_acknowledgement_number = acknowledgement_number;
+                    duplicate_ack_count = 0;
+                    if(cwnd < window_size)
+                      cwnd = cwnd + 1;
+                    if(cwnd > ssthresh){
+                      ss = 0;
+                      ca = 1;
+                    }
+                  }else {
+                    duplicate_ack_count = duplicate_ack_count + 1;
+                    if(duplicate_ack_count == 3) { // go to fast retransmit
+                      duplicate_ack_count = 0;
+                      ss = 0;
+                      fastretransmit = 1;
+                      goto fastretransmit_label;
+                    }
+                  } 
+
+                }else if (ca) { //Congestion Avoidance
+                  if(acknowledgement_number > prev_acknowledgement_number ){
+                    prev_acknowledgement_number = acknowledgement_number;
+                    duplicate_ack_count = 0;
+                    ca_acks_count = ca_acks_count + 1;
+                    if(cwnd == ca_acks_count){
+                      ca_acks_count = 0;
+                      if(cwnd < window_size)
+                        cwnd = cwnd + 1;
+                    }             
+                  } else{
+                    duplicate_ack_count = duplicate_ack_count + 1;
+                    if(duplicate_ack_count == 3) { // go to fast retransmit
+                      duplicate_ack_count = 0;
+                      ca = 0;
+                      fastretransmit = 1;
+                      goto fastretransmit_label;
+                    }             
+                  }
+
+                }else if (fastretransmit){ //Fast Retransmit
+                  fastretransmit_label:
+                  ssthresh = max(cwnd/2 , 2); //cwnd/2 should automatically floor in C
+                  ssthresh = ssthresh + 3;
+                  retransmit_packet = 1;
+                  fastretransmit = 0;
+                  fastrecovery = 1;
+
+                }else if (fastrecovery){ //Fast Recovery
+                    if(acknowledgement_number > prev_acknowledgement_number) {
+                      prev_acknowledgement_number = acknowledgement_number;
+                      duplicate_ack_count = 0;
+                      fastrecovery = 0;
+                      cwnd = ssthresh;
+                      ss = 1;
+                    }else{ //duplicate ack
+                      if(cwnd < window_size)
+                        cwnd = cwnd + 1;
+                    }
+
+                } else { //Error checking - should never be entered
+                  //error - we should never enter this
+                }
+                //cwnd and ssthresh determined by this point
 
 
+                //send packets
+                if(retransmit_packet){
+                  retransmit_packet = 0;
+                  //retransmit lost packet
+                  unsigned int dropped_seq = sliding_window[j];
+                  //If we are going to have timeout come here then we need a way to check that and if so update dropped_seq accordingly AND FLAGS somehow
+                  fseek(fp, dropped_seq - latest_sequence_number, SEEK_CUR);
+                  //send corresponding packet
+                  int bytes_read = 0;
+                  for(;i<1000;i++){ //Change upper limit later
+                    n = fread(file_data +i, 1,1,fp ); 
+                    if(n != 1){ //n != size of elements means we read whole file
+                      completed ='1';
+                      last_file_ack_number = sliding_window[j] + 1; //Set last file ack number here
+                      break;
+                    }
+                  bytes_read++;         
+                  } 
 
-          } else if(closing) {
-            //Close server at this point
-              close(sockfd);         
-              return 0; 
+                  ACK = 0;
+                  SYN = 0;
+                  FIN = 0;
+                  EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                  n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
+                  fseek(fp, latest_sequence_number - dropped_seq, SEEK_CUR);
 
-          } else {
-            //adjust window stuff
-          
-          }
+
+                } else {
+                  //find how many element to remove from sliding window
+                  int i = 0;
+                  for(; i < cwnd - 1; i++){
+                    if(sliding_window[i] >= (acknowledgement_number - 1)){ // is sequence number >= ack number
+                      break;
+                    }
+                  }
+                  int old_elements = i;
+
+                  //shift received elements out of window
+                  for(; i > 0; i--){ 
+                    int j = 0;
+                    for(; j < cwnd - 2; j++){
+                      sliding_window[j] = sliding_window[j + 1];
+                    }
+                  }
+
+                  if(old_elements != 0){
+                    int j = 0;
+                    for(; j < cwnd - 1; j++){
+                      if(j > old_elements){
+                        if(j != 0){
+                          sliding_window[j] = sliding_window[j-1] + 1;
+                        }else {
+                          sliding_window[j] = acknowledgement_number - 1;
+                        }
+                        //send corresponding packet
+                        int bytes_read = 0;
+                        for(;i<1000;i++){ //Change upper limit later
+                            n = fread(file_data +i, 1,1,fp ); 
+                            if(n != 1){ //n != size of elements means we read whole file
+                              completed ='1';
+                              last_file_ack_number = sliding_window[j] + 1; //Set last file ack number here
+                              break;
+                            }
+                            bytes_read++;
+                             
+                        }     
+                        acknowledgement_number = 0; // WHAT ABOUT THIS ONE? We need to figure out what value to put here    
+                        sequence_number = sliding_window[j]; // CHANGE THIS
+                        latest_sequence_number = sequence_number;
+                        ACK = 0;
+                        SYN = 0;
+                        FIN = 0;
+                        EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                        n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
+
+                        if(completed == '1'){
+                          break;
+                        }
+
+
+                      }
+                    }
+                  }
+
+                }
+            
+            }//end
 
         }else if (FIN) { //CLOSING CONNECTION
           //TODO: closing stuff
