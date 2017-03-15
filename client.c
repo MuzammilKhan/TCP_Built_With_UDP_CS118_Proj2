@@ -131,7 +131,7 @@ int main(int argc, char **argv) {
 
 
       int ooo_pkts =  0;
-      int expected_seq_num = 4*1024
+      int expected_seq_num = 4*1024;
       //we are using a hard coded port for our application so source = dest port
       source = portno;
       destination = source;
