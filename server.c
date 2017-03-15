@@ -340,7 +340,7 @@ int main(int argc, char *argv[])
                     for(; j < cwnd - 1; j++){
                       if(j > old_elements){
                         if(j != 0){
-                          sliding_window[j] = sliding_window[j-1] + 1;
+                          sliding_window[j] = sliding_window[j-1] + max_packet_length;
                         }else {
                           sliding_window[j] = acknowledgement_number - 1;
                         }

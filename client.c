@@ -299,7 +299,7 @@ int main(int argc, char **argv) {
 
                   if(expected_seq_num == sequence_number){  
                     fwrite(file_data , 1 , bytes_read , fp);
-                      expected_seq_num = sequence_number +1 + 1024;
+                      expected_seq_num = sequence_number  + 1024;
                       acknowledgement_number = sequence_number + 1;
 
                     int i = 0;
