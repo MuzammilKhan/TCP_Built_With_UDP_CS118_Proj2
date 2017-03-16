@@ -237,7 +237,7 @@ int main(int argc, char *argv[])
               //initialize the sliding window
             cwnd = 5;
                     int j = 0;
-                    for(; j < cwnd - 1; j++){
+                    for(; j < cwnd ; j++){
                         if(j != 0){
                           sliding_window[j] = sliding_window[j-1] + max_packet_length;
                         }else {
@@ -316,9 +316,9 @@ int main(int argc, char *argv[])
                   //TODO. sliding window is not being initialized. hence old_elements is 0 and the if statement is not entered. check for max seq number
                   //find how many element to remove from sliding window
                   int i = 0;
-                  for(; i < cwnd - 1; i++){
+                  for(; i < cwnd; i++){
                     printf("i: %d\n",i );
-                    if(sliding_window[i] >= (acknowledgement_number - 1)){ // is sequence number >= ack number
+                    if(sliding_window[i] > acknowledgement_number && sliding_window[i] <=  latest_sequence_number){ // is sequence number >= ack number
                       break;
                     }
                   }
@@ -326,23 +326,26 @@ int main(int argc, char *argv[])
                   int old_elements = i;
 
                   //shift received elements out of window
+                  printf("removing elements\n");
                   for(; i > 0; i--){ 
                     printf("i: %d\n",i );
                     int j = 0;
-                    for(; j < cwnd - 2; j++){
+                    for(; j < cwnd ; j++){
                       sliding_window[j] = sliding_window[j + 1];
+                      printf("%d ", sliding_window[j]);
                     }
+                    printf("\n");
                   }
 
-                  if(old_elements != 0){
+                  if(old_elements != 0 && completed != '1'){
                     printf("GOt here\n");
                     int j = 0;
-                    for(; j < cwnd - 1; j++){
-                      if(j > old_elements){
+                    for(; j < cwnd; j++){
+                      if(j >= cwnd - old_elements ){
                         if(j != 0){
                           sliding_window[j] = sliding_window[j-1] + max_packet_length;
                         }else {
-                          sliding_window[j] = acknowledgement_number - 1;
+                          sliding_window[j] = latest_sequence_number + max_packet_length;
                         }
                         //send corresponding packet
                         int bytes_read = 0;
