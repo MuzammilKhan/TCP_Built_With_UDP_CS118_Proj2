@@ -37,7 +37,7 @@ void DecodeTCPHeader(char* msgp, char* data , char* completed ,unsigned short * 
   memcpy(completed, msgp+18, 1);  
   memcpy(data, msgp+19, 1000);
   //printf("Receiving Packet SEQ#: %d\n\n"   ,*sequence_number ); 
-   printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN);
+   printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u compl: %c\n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN, *completed);
   return;
 }
 
@@ -297,50 +297,79 @@ int main(int argc, char **argv) {
                     //expected_seq_num = sequence_number;
                   //TODO: check for off by one cases. Check for seg faults. Check for max seq num
 
-                  if(expected_seq_num == sequence_number){  
+
+
+                  if(expected_seq_num == sequence_number){ 
+                  //has to be tested 
                     fwrite(file_data , 1 , bytes_read , fp);
-                      expected_seq_num = sequence_number  + 1024;
-                      acknowledgement_number = sequence_number + 1;
+                      expected_seq_num = sequence_number  + 1024;//change 
+                      acknowledgement_number = sequence_number + 1;//change
 
-                    int i = 0;
-                    for(;i < d_buffer_size - 1000; i++){
-                      data_buffer[i] = data_buffer[i+1000];
+                      int count = 0;
+                      
+                      for(i = 0; i < 5 ; i++){
+                        printf("ooo_pkts[%d]: %d  ",i, ooo_pkts_array[i]);
+                      }
+
+                      printf("\n");
+                    for(i = 0 ; i < w_size_num ; i++){
+                      if(ooo_pkts_array[i] == 1){
+                        fwrite(data_buffer + (i*1000) , 1 , bytes_ood_pkts[i] , fp);
+                        count++;
+                      }
+                      else{
+                        break;
+                      }
                     }
+                      expected_seq_num +=  (1024*count);//change 
+                    //reorder data buf
+                    int y = 0;
+                    for( ; y <= count ; y++){
+                      int i = 0;
+                      for(;i < d_buffer_size - 1000; i++){
+                        data_buffer[i] = data_buffer[i+1000];
+                      }
+                      
+                      bzero(data_buffer + ((w_size_num - 1) *1000) , 1000);
                     
-                    bzero(data_buffer + ((w_size_num - 1) *1000) , 1000);
 
-                    for( i = 0; i < w_size_num ; i++){
+                    for( i = 0; i < (w_size_num - 1); i++){
                       ooo_pkts_array[i] = ooo_pkts_array[i+1];
                       bytes_ood_pkts[i] = bytes_ood_pkts[i+1];
                     }
                     ooo_pkts_array[w_size_num - 1] = 0;
                     bytes_ood_pkts[w_size_num - 1] = 0;
 
-                    for(i = 0 ; i < w_size_num ; i++){
-                      if(ooo_pkts_array[i] == 1){
-                        fwrite(data_buffer + (i*1000) , 1 , bytes_ood_pkts[i] , fp);
-                      }
-                      else{
-                        break;
-                      }
                     }
-
+                    for(i = 0; i < 5 ; i++){
+                        printf("ooo_pkts[%d]: %d  ",i, ooo_pkts_array[i]);
+                      }
+                      printf("\n");
                     int tmp = acknowledgement_number;
-                    acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
-                    sequence_number += max_packet_length ; // CHANGE THIS
-                    
+                    //acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
+                    sequence_number += (max_packet_length * count); 
+                    acknowledgement_number = sequence_number + 1;
+                    printf("count: %d\n", count);
                   }
                   else{
-                    int diff = sequence_number - expected_seq_num;
-                    int diff_index = (sequence_number - expected_seq_num)/1024;
+                    //has to be tested
+                    printf("In Else\n");
+                    int diff = sequence_number - expected_seq_num - 1024;
+                    //for debugging
+                    
+                    printf("index0: %d\n", diff);
+                    int diff_index = (diff)/1024;
+                     printf("index1: %d\n", diff_index);
                     ooo_pkts++;
                     ooo_pkts_array[diff_index] = 1;
+                    printf("index2: %d\n", diff_index);
                     memcpy(data_buffer+(diff_index * 1000) , file_data ,1000);
                     bytes_ood_pkts[diff_index] = bytes_read;
                     
                     int tmp = acknowledgement_number;
-                    acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
-                    sequence_number = sequence_number + 1024; // CHANGE THIS
+                    acknowledgement_number = expected_seq_num + 1; // WHAT ABOUT THIS ONE?        
+                    sequence_number = sequence_number +1024 ; // CHANGE THIS
+
 
                   }
 

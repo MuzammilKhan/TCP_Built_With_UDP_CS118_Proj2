@@ -57,7 +57,7 @@ void EncodeTCPHeader(char* msgp,char* data , char completed,unsigned short  byte
   memcpy(msgp+18, &completed, 1);
    memcpy(msgp+19 , data, bytes_read);
   
-   printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN);
+   printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u comp: %c\n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN ,completed);
   return;
 }
 
@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
 
         }else if (ACK) { //RECIEVED ACK
           //3 cases: part of 3 way handshake,  ack for closing, or ack for regular data,
-
+          printf("ack_num: %d  last_num: %d\n", acknowledgement_number , last_file_ack_number);
           if(completed == '1' && acknowledgement_number == last_file_ack_number){
             //TODO: Have server start connection teardown 
                       printf("Sending client FIN\n");
@@ -247,14 +247,17 @@ int main(int argc, char *argv[])
                         int bytes_read = 0;
                         int i = 0;
                         for(;i<1000;i++){ //Change upper limit later
-                            n = fread(file_data +i, 1,1,fp ); 
-                            if(n != 1){ //n != size of elements means we read whole file
-                              completed ='1';
-                              last_file_ack_number = sliding_window[j] + 1; //Set last file ack number here
-                              break;
+                            if(completed == '0'){
+                              n = fread(file_data +i, 1,1,fp ); 
+                              if(n != 1){ //n != size of elements means we read whole file
+                                
+                                completed ='1';
+                                last_file_ack_number = sliding_window[j] + 1; //Set last file ack number here
+                                printf("Read the last bytes. :%d\n\n\n\n\n\n\n\n\n\n\n\n\n" ,last_file_ack_number );
+                                break;
+                              }
+                              bytes_read++;
                             }
-                            bytes_read++;
-                             
                         }     
                         
                         sequence_number = sliding_window[j]; 
