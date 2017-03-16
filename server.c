@@ -34,7 +34,7 @@ void DecodeTCPHeader(char* msgp, char* data, char *completed,unsigned short * by
   memcpy(FIN, msgp+12, 2);  
   memcpy(window_size, msgp+14, 2);
   memcpy(bytes_read , msgp+16, 2);
-  memcpy(completed , msgp+18, 1);
+  //memcpy(completed , msgp+18, 1);
   
   printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN);
  
@@ -54,7 +54,7 @@ void EncodeTCPHeader(char* msgp,char* data , char completed,unsigned short  byte
   
   memcpy(msgp+14, &window_size, 2);
   memcpy(msgp+16, &bytes_read, 2);
-  memcpy(msgp+18, &completed, 1);
+  //memcpy(msgp+18, &completed, 1);
    memcpy(msgp+19 , data, bytes_read);
   
    printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u comp: %c\n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN ,completed);
@@ -339,9 +339,9 @@ int main(int argc, char *argv[])
                     }
                     printf("\n");
                   }
-
-                  if(old_elements != 0 && completed != '1'){
-                    printf("GOt here\n");
+                  //changed on Muzzamil's instructions
+                  if((old_elements != 0) && (completed != '1')){
+                    printf("GOt here,  compl: %c\n" , completed);
                     int j = 0;
                     for(; j < cwnd; j++){
                       if(j >= cwnd - old_elements ){

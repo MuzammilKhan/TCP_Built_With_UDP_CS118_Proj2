@@ -10,7 +10,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h> 
-
+#include "sys/time.h"
 
 #define BUFSIZE 1024
 
@@ -34,7 +34,7 @@ void DecodeTCPHeader(char* msgp, char* data , char* completed ,unsigned short * 
   memcpy(FIN, msgp+12, 2);
   memcpy(window_size, msgp+14, 2);
   memcpy(bytes_read, msgp+16, 2);
-  memcpy(completed, msgp+18, 1);  
+ // memcpy(completed, msgp+18, 1);  
   memcpy(data, msgp+19, 1000);
   //printf("Receiving Packet SEQ#: %d\n\n"   ,*sequence_number ); 
    printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u compl: %c\n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN, *completed);
@@ -53,7 +53,7 @@ void EncodeTCPHeader(char* msgp, char* data ,char completed ,unsigned short  byt
   memcpy(msgp+12,&FIN, 2);
   memcpy(msgp+14, &window_size, 2);
    memcpy(msgp+16, &bytes_read ,2);
-   memcpy(msgp+18, &completed ,1);
+  // memcpy(msgp+18, &completed ,1);
    memcpy(msgp+19 , data, bytes_read);
     printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN);
 
@@ -64,7 +64,7 @@ void EncodeTCPHeader(char* msgp, char* data ,char completed ,unsigned short  byt
 
 int main(int argc, char **argv) {
     
-
+    struct timeval t1 ,t2;
     int max_packet_length = 1024; //same as server
     int mac_sequence_number = 30720; //same as server
     int rto_val = 500 * 1000; // This value will only change for the extra credit part
@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
 
          
       memset(buf, 0, BUFSIZE);   //reset memory
-
+      double elapsedTime = 0;
       unsigned short source; 
       unsigned short destination;
       unsigned int sequence_number = 0;
@@ -158,6 +158,8 @@ int main(int argc, char **argv) {
 
 
       if(firsttransmission) {
+          SYN_LOST:
+
           ACK = 0;
           SYN = 1;
           FIN = 0;
@@ -167,8 +169,10 @@ int main(int argc, char **argv) {
 
           bzero(buf, BUFSIZE);
           EncodeTCPHeader(buf, file_data, completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-          
+          gettimeofday(&t1, NULL);
           n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
+          //start SYN timer here
+          
           if (n < 0)  
             error("ERROR in three way handshake: sendto");
 
@@ -219,12 +223,23 @@ int main(int argc, char **argv) {
                 DecodeTCPHeader(buf, file_data, &completed,&bytes_read,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
 
                 if(SYN && ACK) {
+                  //check SYN timer here. If timeout then resend SYN
                   //reply with ACK & filename
+                  gettimeofday(&t2, NULL);
+                  elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
+                  //elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
+                  printf("Elapsed Time: %f\n", elapsedTime);
+                  if(elapsedTime <=0 ){
+                    
+                    goto SYN_LOST;
+                  }
+
+                  
                   ACK = 1;
                   SYN = 0;
                   FIN = 0;
                     
-                 // int tmp = acknowledgement_number;      
+                 // int tmp = acknowledgement_number;      f
                   //acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
                   //sequence_number = tmp; // CHANGE THIS
                   acknowledgement_number = 1;
