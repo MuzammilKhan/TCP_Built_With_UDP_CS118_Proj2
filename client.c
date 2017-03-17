@@ -183,8 +183,8 @@ int main(int argc, char **argv) {
           Timer.tv_usec = rto_val;        
       } else {
 
-          //n = select(sockfd + 1, &active_fd_set, NULL, NULL, &Timer);
-          n = select(sockfd + 1, &active_fd_set, NULL, NULL, NULL); //don't use timer yet for testing
+          n = select(sockfd + 1, &active_fd_set, NULL, NULL, &Timer);
+          //n = select(sockfd + 1, &active_fd_set, NULL, NULL, NULL); //don't use timer yet for testing
 
           bzero(buf, BUFSIZE);
           bzero(temp_buf , BUFSIZE);
@@ -196,6 +196,24 @@ int main(int argc, char **argv) {
             //go through timers and check for timeout
             //if timeout occurs set timeout variable to 1
 
+
+              //reset timers : TODO: move this after retransmission and checking
+              Timer.tv_sec = 0;
+              Timer.tv_usec = rto_val/8;   
+
+              if(handshake) {
+                gettimeofday(&t2, NULL);
+                elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
+                elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
+                printf("Elapsed Time: %f\n", elapsedTime);
+                if(elapsedTime >= rto_val){
+                  goto SYN_LOST;
+                }
+
+              }
+
+
+              /*
             if(timeout) {
               timeout = 0; // reset timeout tracker 
               if (handshake || closing) {
@@ -210,6 +228,7 @@ int main(int argc, char **argv) {
 
               }
             }
+            */
 
 
           } else {         
@@ -222,19 +241,7 @@ int main(int argc, char **argv) {
                 
                 DecodeTCPHeader(buf, file_data, &completed,&bytes_read,&sequence_number, &acknowledgement_number, &ACK, &SYN, &FIN, &window_size);
 
-                if(SYN && ACK) {
-                  //check SYN timer here. If timeout then resend SYN
-                  //reply with ACK & filename
-                  gettimeofday(&t2, NULL);
-                  elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
-                  //elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
-                  printf("Elapsed Time: %f\n", elapsedTime);
-                  if(elapsedTime <=0 ){
-                    
-                    goto SYN_LOST;
-                  }
-
-                  
+                if(SYN && ACK) {                  
                   ACK = 1;
                   SYN = 0;
                   FIN = 0;
@@ -257,7 +264,7 @@ int main(int argc, char **argv) {
 
                   handshake = 0;
                   Timer.tv_sec = 0; //reset timer
-                  Timer.tv_usec = rto_val;   
+                  Timer.tv_usec = rto_val /8;   
                 } else if (ACK) {
                   if(closing) { 
                     fclose(fp);
@@ -402,8 +409,8 @@ int main(int argc, char **argv) {
                     error("ERROR in three way handshake: sendto");
 
                   
-                  Timer.tv_sec = 0; //reset timer
-                  Timer.tv_usec = rto_val; 
+                  //Timer.tv_sec = 0; //reset timer
+                  //Timer.tv_usec = rto_val; 
 
 
                 }
