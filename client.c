@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
       unsigned short ACK;
       unsigned short SYN;
       unsigned short FIN;
-      unsigned short window_size = 5120;
+      unsigned short window_size = 4096;
       unsigned short w_size_num = window_size/1024;
       unsigned short bytes_read = 0;
       int handshake = 1;
@@ -338,7 +338,7 @@ int main(int argc, char **argv) {
 
                       int count = 0;
                       
-                    for(i = 0; i < 5 ; i++){
+                    for(i = 0; i < w_size_num ; i++){
                         printf("ooo_pkts[%d]: %d  ",i, ooo_pkts_array[i]);
                       }
 
@@ -372,7 +372,7 @@ int main(int argc, char **argv) {
                     bytes_ood_pkts[w_size_num - 1] = 0;
 
                     }
-                    for(i = 0; i < 5 ; i++){
+                    for(i = 0; i < w_size_num ; i++){
                         printf("ooo_pkts[%d]: %d  ",i, ooo_pkts_array[i]);
                       }
                       printf("\n");

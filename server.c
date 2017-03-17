@@ -100,10 +100,10 @@ int main(int argc, char *argv[])
   // restrictions for our TCP implementation
   int max_packet_length = 1024; //includes header, in bytes
   int max_sequence_number = 30720; //bytes    
-  int window_size_req = 5120; //bytes
+  int window_size_req = 4096; //bytes
   int rto_val = 500; //in ms
   char completed = '0';
-  int cwnd = 5;
+  int cwnd = window_size_req / max_packet_length;
   int ssthresh = (window_size_req/max_packet_length) * 3 / 4; // TODO: Test this value
   int ss = 1;
   int ca = 0;
@@ -146,6 +146,8 @@ int main(int argc, char *argv[])
   
   Timer.tv_sec = 0;
   Timer.tv_usec = rto_val/8;
+  
+  New_Connection:
 
   while(running){
     
@@ -206,6 +208,50 @@ int main(int argc, char *argv[])
         if(elapsedTime >= (2*rto_val)){
           //go back to big loop
           printf("Server KO\n");
+
+             
+            buffer_size = 1024;
+                  
+            memset(buffer, 0, buffer_size); //reset memory
+
+            elapsedTime = 0;
+            
+  // restrictions for our TCP implementation
+            max_packet_length = 1024; //includes header, in bytes
+            max_sequence_number = 30720; //bytes    
+            window_size_req = 4096; //bytes
+            rto_val = 500; //in ms
+            completed = '0';
+            cwnd = window_size_req / max_packet_length;
+            ssthresh = (window_size_req/max_packet_length) * 3 / 4; // TODO: Test this value
+            ss = 1;
+            ca = 0;
+            fastretransmit = 0;
+            fastrecovery = 0;
+            duplicate_ack_count = 0;
+            ca_acks_count = 0;
+            retransmit_packet = 0;  
+            prev_acknowledgement_number = -1;
+    // change
+            bytes_read = 0;
+   
+            handshake = 0;
+            closing = 0;  
+  
+            connected = 0;
+   
+            last_file_ack_number = 0; //set when last data packet from file sent out
+            latest_sequence_number = 0;
+            final_fin = 0;
+  //timer
+   
+  //we are using a hard coded port for our application so source = dest port
+  
+   
+            Timer.tv_sec = 0;
+            Timer.tv_usec = rto_val/8;
+
+          goto New_Connection;
         }
 
       }
@@ -532,6 +578,9 @@ int main(int argc, char *argv[])
     }
 
   }
+
+
+
 
 
 }
