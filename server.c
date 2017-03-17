@@ -95,11 +95,13 @@ int main(int argc, char *argv[])
   char buffer[buffer_size];			 
   memset(buffer, 0, buffer_size);	//reset memory
 
+  double elapsedTime = 0;
+  struct timeval t1 ,t2;
   // restrictions for our TCP implementation
   int max_packet_length = 1024; //includes header, in bytes
   int max_sequence_number = 30720; //bytes    
   int window_size_req = 5120; //bytes
-  int rto_val = 500 * 1000; //retransmission timeout value (ms) but select uses us, so we multiply by 1000
+  int rto_val = 500; //in ms
   char completed = '0';
   int cwnd = 1;
   int ssthresh = (window_size_req/max_packet_length) * 3 / 4; // TODO: Test this value
@@ -111,6 +113,7 @@ int main(int argc, char *argv[])
   int ca_acks_count = 0;
   int retransmit_packet = 0;
   int sliding_window[window_size_req/max_packet_length];
+  struct timeval timer_window[window_size_req/max_packet_length];
   unsigned short source; 
   unsigned short destination;
   unsigned int sequence_number;
@@ -142,7 +145,7 @@ int main(int argc, char *argv[])
      
   
   Timer.tv_sec = 0;
-  Timer.tv_usec = rto_val;
+  Timer.tv_usec = rto_val/8;
 
   while(running){
     
@@ -157,16 +160,60 @@ int main(int argc, char *argv[])
       //ERROR OCCURED TODO: handle error
     } else if (n == 0 && handshake) { //timeout occured during handshake 
       //resend SYNACK to client
+      gettimeofday(&t2, NULL);
+      elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
+      elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
+      printf("Elapsed Time: %f\n", elapsedTime);
+      if(elapsedTime >= rto_val){
+        gettimeofday(&t1, NULL);
         n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen); // can resend like this as we havent changed the values of anything in the buffer yet
         if (n < 0)  
-        error("ERROR in three way handshake: sendto");
+        error("ERROR in three way handshake: sendto");                  
+      }
         Timer.tv_sec = 0; //reset timer
-        Timer.tv_usec = rto_val;
+        Timer.tv_usec = rto_val/8;
     } else if (n == 0 && closing) { //timeout occured during closing
       // resend ACK & FIN to client  
 
         Timer.tv_sec = 0; //reset timer
-        Timer.tv_usec = rto_val;
+        Timer.tv_usec = rto_val/8;
+    } else if(n == 0){ //check data timers
+      int i = 0;
+      for(; i < cwnd; i++){
+                gettimeofday(&t2, NULL);
+                elapsedTime = (t2.tv_sec - timer_window[i].tv_sec) * 1000.0;      // sec to ms
+                elapsedTime += (t2.tv_usec - timer_window[i].tv_usec) / 1000.0;   // us to ms
+                printf("Elapsed Time: %f\n", elapsedTime);
+
+        if(elapsedTime >= rto_val){
+          //retransmit lost packet
+          unsigned int dropped_seq = sliding_window[i];
+          //If we are going to have timeout come here then we need a way to check that and if so update dropped_seq accordingly AND FLAGS somehow
+          fseek(fp, dropped_seq - latest_sequence_number, SEEK_CUR);
+          //send corresponding packet
+          int bytes_read = 0;
+          for(;i<1000;i++){ //Change upper limit later
+            n = fread(file_data +i, 1,1,fp ); 
+            if(n != 1){ //n != size of elements means we read whole file
+                completed ='1';
+                last_file_ack_number = sliding_window[i] + 1; //Set last file ack number here
+                break;
+            }
+            bytes_read++;         
+          } 
+
+          ACK = 0;
+          SYN = 0;
+          FIN = 0;
+          EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          gettimeofday(&timer_window[i], NULL); // reset corresponding timer
+          n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
+          fseek(fp, latest_sequence_number - dropped_seq + bytes_read, SEEK_CUR);
+          }
+      }
+
+
+
     } else { 
       if (FD_ISSET(sockfd, &active_fd_set)) { // new connection request
         bzero(buffer, buffer_size);
@@ -191,13 +238,11 @@ int main(int argc, char *argv[])
           //respond to client
           bzero(buffer, buffer_size);
           EncodeTCPHeader(buffer, file_data, completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          gettimeofday(&t1, NULL);
           n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
           if (n < 0)  
             error("ERROR in three way handshake: sendto");
-
-          Timer.tv_sec = 0; //reset timer
-          Timer.tv_usec = rto_val;
-        
+      
          
 
         }else if (ACK) { //RECIEVED ACK
@@ -267,6 +312,8 @@ int main(int argc, char *argv[])
                         FIN = 0;
                         
                         EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                        //Initialize corresponding timer
+                        gettimeofday(&timer_window[i], NULL); 
                         n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
 
                         if(completed == '1'){
@@ -339,7 +386,17 @@ int main(int argc, char *argv[])
                     }
                     printf("\n");
                   }
-                  //changed on Muzzamil's instructions
+
+                  //shift array of timers TODO: Check this
+                  if((old_elements != 0) && (completed != '1')){
+                    int m = 0;
+                    for(; m + old_elements < cwnd; m++){
+                       timer_window[m] = timer_window[m + old_elements];
+
+                    }
+                  }
+
+ 
                   if((old_elements != 0) && (completed != '1')){
                     printf("GOt here,  compl: %c\n" , completed);
                     int j = 0;
@@ -371,6 +428,7 @@ int main(int argc, char *argv[])
                         FIN = 0;
                         
                         EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                        gettimeofday(&timer_window[i], NULL);  //start corresponding timer
                         n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
 
                         if(completed == '1'){
