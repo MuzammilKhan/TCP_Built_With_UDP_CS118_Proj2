@@ -129,10 +129,10 @@ int main(int argc, char *argv[])
   int closing = 0;  
   FILE *fp;
   int connected = 0;
-
+  int comp_2 = 0;
   unsigned int last_file_ack_number = 0; //set when last data packet from file sent out
   unsigned int latest_sequence_number = 0;
-
+  int final_fin = 0;
   //timer
   struct timeval Timer;
  
@@ -163,7 +163,7 @@ int main(int argc, char *argv[])
       gettimeofday(&t2, NULL);
       elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
       elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
-      printf("Elapsed Time: %f\n", elapsedTime);
+     
       if(elapsedTime >= rto_val){
         gettimeofday(&t1, NULL);
         n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen); // can resend like this as we havent changed the values of anything in the buffer yet
@@ -172,12 +172,45 @@ int main(int argc, char *argv[])
       }
         Timer.tv_sec = 0; //reset timer
         Timer.tv_usec = rto_val/8;
-    } else if (n == 0 && closing) { //timeout occured during closing
+    } else if (n == 0 && closing && final_fin  == 0) { //timeout occured during closing
       // resend ACK & FIN to client  
+         gettimeofday(&t2, NULL);
+        elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
+        elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
+        
+        
+        if(elapsedTime >= rto_val){
+          printf("Sending server FIN again\n");
+          FIN = 1;
+          ACK = 0;
+          SYN = 0;
+          EncodeTCPHeader(buffer, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          n = sendto(sockfd, buffer, sizeof(buffer), 0, (const struct sockaddr* ) &cli_addr, clilen);
+          if (n < 0)  
+            error("ERROR in FIN init");
+
+          closing = 1;
+
+        }
 
         Timer.tv_sec = 0; //reset timer
         Timer.tv_usec = rto_val/8;
-    } else if(n == 0 && connected ==1){ //check data timers
+      }
+      else if(n ==0 && final_fin == 1) {
+
+        gettimeofday(&t2, NULL);
+        elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
+        elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
+        
+        
+        if(elapsedTime >= (2*rto_val)){
+          //go back to big loop
+          printf("Server KO\n");
+        }
+
+      }
+
+    else if(n == 0 && connected ==1){ //check data timers
       int i = 0;
       
       for(; i < cwnd; i++){
@@ -266,11 +299,12 @@ int main(int argc, char *argv[])
           printf("ack_num: %d  last_num: %d\n", acknowledgement_number , last_file_ack_number);
           if(completed == '1' && acknowledgement_number == last_file_ack_number){
             //TODO: Have server start connection teardown 
-                      printf("Sending client FIN\n");
+                      printf("Sending server FIN\n");
                       FIN = 1;
                       ACK = 0;
                       SYN = 0;
                     EncodeTCPHeader(buffer, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                    gettimeofday(&t1,NULL);
                     n = sendto(sockfd, buffer, sizeof(buffer), 0, (const struct sockaddr* ) &cli_addr, clilen);
                     if (n < 0)  
                       error("ERROR in FIN init");
@@ -399,7 +433,7 @@ int main(int argc, char *argv[])
                   for(; i > 0; i--){ 
                     printf("i: %d\n",i );
                     int j = 0;
-                    for(; j < cwnd ; j++){
+                    for(; j < cwnd - 1 ; j++){
                       sliding_window[j] = sliding_window[j + 1];
                       printf("%d ", sliding_window[j]);
                     }
@@ -461,6 +495,7 @@ int main(int argc, char *argv[])
                     }
                   }
 
+
                 }
               }
 
@@ -470,18 +505,24 @@ int main(int argc, char *argv[])
                       ACK = 1;
                       SYN = 0;
                     EncodeTCPHeader(buffer, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                    gettimeofday(&t1,NULL);
+                    
                     n = sendto(sockfd, buffer, sizeof(buffer), 0, (const struct sockaddr* ) &cli_addr, clilen);
                     if (n < 0)  
                       error("ERROR in FIN init");
 
                     //TODO: - DO TIMED WAIT stuff
-                  Timer.tv_sec = 0; //reset timer
-                  Timer.tv_usec = 2 * rto_val; 
+                  //Timer.tv_sec = 0; //reset timer
+                  //Timer.tv_usec = 2 * rto_val; 
 
                   //after timed wait
-                  fclose(fp);
-                  close(sockfd);
-                  return 0;
+                  if(final_fin == 0){
+                    fclose(fp);
+                  }
+                  final_fin = 1;
+
+                  //close(sockfd);
+                  //return 0;
 
         } else { 
 

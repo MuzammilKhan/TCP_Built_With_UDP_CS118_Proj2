@@ -205,8 +205,7 @@ int main(int argc, char **argv) {
                 gettimeofday(&t2, NULL);
                 elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
                 elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
-                printf("Elapsed Time: %f\n", elapsedTime);
-                printf("RTO_VAL: %d\n",rto_val );
+                
                 if(elapsedTime >= rto_val){
                   printf("resend\n");
                   goto SYN_LOST;
@@ -214,7 +213,17 @@ int main(int argc, char **argv) {
 
               }
 
+              if(closing){
+                gettimeofday(&t2, NULL);
+                elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
+                elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
+                
+                if(elapsedTime >= rto_val){
+                  printf("resend FIN client\n");
+                  goto FIN_LOST;
+                }
 
+              }
               /*
             if(timeout) {
               timeout = 0; // reset timeout tracker 
@@ -278,6 +287,9 @@ int main(int argc, char **argv) {
                   }
 
                 } else if (FIN) {
+                  
+                  FIN_LOST:
+
                   ACK = 1;
                   SYN = 0;
                   FIN = 0;
@@ -301,6 +313,7 @@ int main(int argc, char **argv) {
 
                   bzero(buf, BUFSIZE);
                   EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                  gettimeofday(&t1 , NULL);
                   n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
                   if (n < 0)  
                     error("ERROR in three way closing - client: sendto");
