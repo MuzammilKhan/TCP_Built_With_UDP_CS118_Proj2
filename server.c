@@ -57,7 +57,7 @@ void EncodeTCPHeader(char* msgp,char* data , char completed,unsigned short  byte
   //memcpy(msgp+18, &completed, 1);
    memcpy(msgp+19 , data, bytes_read);
   
-   printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u comp: %c\n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN ,completed);
+   printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u comp: %c bytes: %u\n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN ,completed,bytes_read);
   return;
 }
 
@@ -313,7 +313,9 @@ int main(int argc, char *argv[])
                         
                         EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
                         //Initialize corresponding timer
-                        gettimeofday(&timer_window[i], NULL); 
+                        printf("Got here j: %d\n",j);
+                        gettimeofday(timer_window +j, NULL); 
+                        printf("After time\n");
                         n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
 
                         if(completed == '1'){
@@ -428,7 +430,7 @@ int main(int argc, char *argv[])
                         FIN = 0;
                         
                         EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
-                        gettimeofday(&timer_window[i], NULL);  //start corresponding timer
+                        gettimeofday(timer_window +j, NULL);  //start corresponding timer
                         n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
 
                         if(completed == '1'){

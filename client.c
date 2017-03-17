@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
     struct timeval t1 ,t2;
     int max_packet_length = 1024; //same as server
     int mac_sequence_number = 30720; //same as server
-    int rto_val = 500 * 1000; // This value will only change for the extra credit part
+    int rto_val = 500 ; // This value will only change for the extra credit part
 
     FILE *fp;
     char file_data[1000];
@@ -206,7 +206,9 @@ int main(int argc, char **argv) {
                 elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
                 elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
                 printf("Elapsed Time: %f\n", elapsedTime);
+                printf("RTO_VAL: %d\n",rto_val );
                 if(elapsedTime >= rto_val){
+                  printf("resend\n");
                   goto SYN_LOST;
                 }
 
@@ -311,15 +313,9 @@ int main(int argc, char **argv) {
                   
                   
                   int i = 0;
-                  
-                  //if expected seq_num == seq_num, write to file
-                  //else write to buffer in correct order. 
-                  //initial seq num = 3
                   printf("seq_num: %d   ack_num: %d bytes_read: %u  expected_seq_num: %d \n\n",sequence_number,acknowledgement_number,bytes_read, expected_seq_num );
-                    //expected_seq_num = sequence_number;
-                  //TODO: check for off by one cases. Check for seg faults. Check for max seq num
-
-
+                  
+                  if(sequence_number - expected_seq_num >= 0){
 
                   if(expected_seq_num == sequence_number){ 
                   //has to be tested 
@@ -329,7 +325,7 @@ int main(int argc, char **argv) {
 
                       int count = 0;
                       
-                      for(i = 0; i < 5 ; i++){
+                    for(i = 0; i < 5 ; i++){
                         printf("ooo_pkts[%d]: %d  ",i, ooo_pkts_array[i]);
                       }
 
@@ -343,7 +339,7 @@ int main(int argc, char **argv) {
                         break;
                       }
                     }
-                      expected_seq_num +=  (1024*count);//change 
+                    expected_seq_num +=  (1024*count);//change 
                     //reorder data buf
                     int y = 0;
                     for( ; y <= count ; y++){
@@ -390,29 +386,23 @@ int main(int argc, char **argv) {
                     
                     int tmp = acknowledgement_number;
                     acknowledgement_number = expected_seq_num + 1; // WHAT ABOUT THIS ONE?        
-                    sequence_number = sequence_number +1024 ; // CHANGE THIS
-
-
+                    sequence_number = sequence_number +1024 ; // CHANGE THIS . check for duplicate?
                   }
 
-                  
                   ACK = 1;
                   SYN = 0;
                   FIN = 0;
-                        
-                  
-
                   bzero(buf, BUFSIZE);
                   EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
                   n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
                   if (n < 0)  
                     error("ERROR in three way handshake: sendto");
 
-                  
                   //Timer.tv_sec = 0; //reset timer
                   //Timer.tv_usec = rto_val; 
 
-
+                
+                  }
                 }
 
     
