@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
   int window_size_req = 5120; //bytes
   int rto_val = 500; //in ms
   char completed = '0';
-  int cwnd = 1;
+  int cwnd = 5;
   int ssthresh = (window_size_req/max_packet_length) * 3 / 4; // TODO: Test this value
   int ss = 1;
   int ca = 0;
@@ -187,20 +187,22 @@ int main(int argc, char *argv[])
                 elapsedTime += (t2.tv_usec - timer_window[i].tv_usec) / 1000.0;   // us to ms
                 //printf("Elapsed Time: %f\n", elapsedTime);
 
-        if(elapsedTime >= rto_val){
-         printf("Retransmitting\n");
+        if(elapsedTime >= rto_val && sliding_window[i] != 0){
+         printf("Retransmitting \n");
           //retransmit lost packet
           unsigned int dropped_seq = sliding_window[i];
           //If we are going to have timeout come here then we need a way to check that and if so update dropped_seq accordingly AND FLAGS somehow
-          int pkt_24_offset_1 = dropped_seq/max_packet_length;
-          int pkt_24_offset_2 = latest_sequence_number/max_packet_length;
-
-          fseek(fp, dropped_seq - latest_sequence_number - pkt_24_offset_1 - pkt_24_offset_2, SEEK_CUR);
+          int pkt_24_offset_1 = (dropped_seq/max_packet_length) * 24;
+          int pkt_24_offset_2 = (latest_sequence_number/max_packet_length)*24;
+          printf("dropped_seq: %d latest_sequence_number: %d pkt_24_offset_1: %d pkt_24_offset_2: %d\n",dropped_seq,latest_sequence_number , pkt_24_offset_1 , pkt_24_offset_2 );
+          //fseek(fp, dropped_seq - latest_sequence_number - pkt_24_offset_1 - pkt_24_offset_2, SEEK_CUR);
+          fseek(fp, dropped_seq - pkt_24_offset_1 -1000, SEEK_SET);
           //send corresponding packet
           int bytes_read = 0;
-          i = 0;
-          for(;i<1000;i++){ //Change upper limit later
-            n = fread(file_data +i, 1,1,fp ); 
+          int p = 0;
+
+          for(;p<1000;p++){ //Change upper limit later
+            n = fread(file_data +p, 1,1,fp ); 
             if(n != 1){ //n != size of elements means we read whole file
                 completed ='1';
                 last_file_ack_number = sliding_window[i] + 1; //Set last file ack number here
@@ -217,8 +219,11 @@ int main(int argc, char *argv[])
           EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
           gettimeofday(&timer_window[i], NULL); // reset corresponding timer
           n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
-          fseek(fp, latest_sequence_number - dropped_seq + bytes_read - pkt_24_offset_1 - pkt_24_offset_2, SEEK_CUR);
-          printf("Retransmitting seq_num: %d\n", sequence_number);
+          //fseek(fp, latest_sequence_number - dropped_seq + bytes_read - pkt_24_offset_1 - pkt_24_offset_2, SEEK_CUR);
+          fseek(fp, latest_sequence_number - pkt_24_offset_2, SEEK_SET);
+          
+          printf("Retransmitting seq_num: %d  index: %d\n", sequence_number,i);
+          break;
           }
       }
 
@@ -291,7 +296,7 @@ int main(int argc, char *argv[])
             }
 
               //initialize the sliding window
-            cwnd = 5;
+            
                     int j = 0;
                     for(; j < cwnd ; j++){
                         if(j != 0){
@@ -375,12 +380,13 @@ int main(int argc, char *argv[])
 
 
                 } else {
-                  cwnd = 5; // TODO: DELETE THIS LINE!!!!
+                   // TODO: DELETE THIS LINE!!!!
                   //TODO. sliding window is not being initialized. hence old_elements is 0 and the if statement is not entered. check for max seq number
                   //find how many element to remove from sliding window
                   int i = 0;
                   for(; i < cwnd; i++){
                     printf("i: %d\n",i );
+                    printf("latest_seq: %d  ack_num: %d   sliding_window[i]: %d\n", latest_sequence_number , acknowledgement_number , sliding_window[i]);
                     if(sliding_window[i] > acknowledgement_number && sliding_window[i] <=  latest_sequence_number){ // is sequence number >= ack number
                       break;
                     }
@@ -414,12 +420,14 @@ int main(int argc, char *argv[])
                     printf("GOt here,  compl: %c\n" , completed);
                     int j = 0;
                     for(; j < cwnd; j++){
+                      printf("before sliding_window[j]: %d  ", sliding_window[j]);
                       if(j >= cwnd - old_elements ){
                         if(j != 0){
                           sliding_window[j] = sliding_window[j-1] + max_packet_length;
                         }else {
                           sliding_window[j] = latest_sequence_number + max_packet_length;
                         }
+                        printf("after sliding_window[j]: %d\n", sliding_window[j]);
                         //send corresponding packet
                         int bytes_read = 0;
                         i = 0;
