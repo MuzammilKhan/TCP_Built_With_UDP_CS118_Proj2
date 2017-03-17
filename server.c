@@ -128,7 +128,7 @@ int main(int argc, char *argv[])
   int handshake = 0;
   int closing = 0;  
   FILE *fp;
-
+  int connected = 0;
 
   unsigned int last_file_ack_number = 0; //set when last data packet from file sent out
   unsigned int latest_sequence_number = 0;
@@ -152,8 +152,8 @@ int main(int argc, char *argv[])
     FD_ZERO(&active_fd_set);
     FD_SET(sockfd, &active_fd_set);
     clilen = sizeof(cli_addr);
-    //n = select(sockfd + 1, &active_fd_set, NULL, NULL, &Timer);
-    n = select(sockfd + 1, &active_fd_set, NULL, NULL, NULL); //don't use timer yet for testing
+    n = select(sockfd + 1, &active_fd_set, NULL, NULL, &Timer);
+    //n = select(sockfd + 1, &active_fd_set, NULL, NULL, NULL); //don't use timer yet for testing
     
     if (n < 0) {
       close(sockfd);
@@ -177,21 +177,28 @@ int main(int argc, char *argv[])
 
         Timer.tv_sec = 0; //reset timer
         Timer.tv_usec = rto_val/8;
-    } else if(n == 0){ //check data timers
+    } else if(n == 0 && connected ==1){ //check data timers
       int i = 0;
+      
       for(; i < cwnd; i++){
+                //printf("Loop i: %d\n",i );          
                 gettimeofday(&t2, NULL);
                 elapsedTime = (t2.tv_sec - timer_window[i].tv_sec) * 1000.0;      // sec to ms
                 elapsedTime += (t2.tv_usec - timer_window[i].tv_usec) / 1000.0;   // us to ms
-                printf("Elapsed Time: %f\n", elapsedTime);
+                //printf("Elapsed Time: %f\n", elapsedTime);
 
         if(elapsedTime >= rto_val){
+         printf("Retransmitting\n");
           //retransmit lost packet
           unsigned int dropped_seq = sliding_window[i];
           //If we are going to have timeout come here then we need a way to check that and if so update dropped_seq accordingly AND FLAGS somehow
-          fseek(fp, dropped_seq - latest_sequence_number, SEEK_CUR);
+          int pkt_24_offset_1 = dropped_seq/max_packet_length;
+          int pkt_24_offset_2 = latest_sequence_number/max_packet_length;
+
+          fseek(fp, dropped_seq - latest_sequence_number - pkt_24_offset_1 - pkt_24_offset_2, SEEK_CUR);
           //send corresponding packet
           int bytes_read = 0;
+          i = 0;
           for(;i<1000;i++){ //Change upper limit later
             n = fread(file_data +i, 1,1,fp ); 
             if(n != 1){ //n != size of elements means we read whole file
@@ -205,14 +212,18 @@ int main(int argc, char *argv[])
           ACK = 0;
           SYN = 0;
           FIN = 0;
+          
+          sequence_number = sliding_window[i];
           EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
           gettimeofday(&timer_window[i], NULL); // reset corresponding timer
           n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
-          fseek(fp, latest_sequence_number - dropped_seq + bytes_read, SEEK_CUR);
+          fseek(fp, latest_sequence_number - dropped_seq + bytes_read - pkt_24_offset_1 - pkt_24_offset_2, SEEK_CUR);
+          printf("Retransmitting seq_num: %d\n", sequence_number);
           }
       }
 
-
+      Timer.tv_sec = 0;
+      Timer.tv_usec = rto_val/8;
 
     } else { 
       if (FD_ISSET(sockfd, &active_fd_set)) { // new connection request
@@ -229,7 +240,7 @@ int main(int argc, char *argv[])
           ACK = 1;
           SYN = 1;
           FIN = 0;
-          
+          connected =1;
           
           acknowledgement_number = sequence_number + 1; 
         
@@ -325,7 +336,7 @@ int main(int argc, char *argv[])
                     }
             
 
-            goto data_transfer_label;
+            //goto data_transfer_label;
 
             } else if(closing) {
    

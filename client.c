@@ -314,7 +314,7 @@ int main(int argc, char **argv) {
                   
                   int i = 0;
                   printf("seq_num: %d   ack_num: %d bytes_read: %u  expected_seq_num: %d \n\n",sequence_number,acknowledgement_number,bytes_read, expected_seq_num );
-                  
+                  unsigned int latest_ack;
                   if(sequence_number - expected_seq_num >= 0){
 
                   if(expected_seq_num == sequence_number){ 
@@ -367,6 +367,7 @@ int main(int argc, char **argv) {
                     //acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
                     sequence_number += (max_packet_length * count); 
                     acknowledgement_number = sequence_number + 1;
+                    latest_ack = acknowledgement_number;
                     printf("count: %d\n", count);
                   }
                   else{
@@ -385,7 +386,8 @@ int main(int argc, char **argv) {
                     bytes_ood_pkts[diff_index] = bytes_read;
                     
                     int tmp = acknowledgement_number;
-                    acknowledgement_number = expected_seq_num + 1; // WHAT ABOUT THIS ONE?        
+                    //acknowledgement_number = expected_seq_num + 1; // WHAT ABOUT THIS ONE?        
+                    acknowledgement_number = latest_ack;
                     sequence_number = sequence_number +1024 ; // CHANGE THIS . check for duplicate?
                   }
 
