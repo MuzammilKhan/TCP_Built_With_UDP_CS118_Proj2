@@ -22,7 +22,7 @@ void error(char *msg) {
     exit(0);
 }
 
-
+int retransmit_packet;
 /*Decode basic "TCP header" at msgp and get desired values. Following data types chosen so that encoding is easy later. Using referenced
 data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
 void DecodeTCPHeader(char* msgp, char* data , char* completed ,unsigned short * bytes_read ,unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned short* ACK, unsigned short* SYN, unsigned short* FIN, unsigned short* window_size){
@@ -37,7 +37,7 @@ void DecodeTCPHeader(char* msgp, char* data , char* completed ,unsigned short * 
  // memcpy(completed, msgp+18, 1);  
   memcpy(data, msgp+19, 1000);
   //printf("Receiving Packet SEQ#: %d\n\n"   ,*sequence_number ); 
-   printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u compl: %c\n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN, *completed);
+  printf("Receiving Packet %d\n\n"   ,*sequence_number );
   return;
 }
 
@@ -55,10 +55,15 @@ void EncodeTCPHeader(char* msgp, char* data ,char completed ,unsigned short  byt
    memcpy(msgp+16, &bytes_read ,2);
   // memcpy(msgp+18, &completed ,1);
    memcpy(msgp+19 , data, bytes_read);
-    printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN);
-
-  //printf("Sending Packet ACK#: %d\n\n"   ,acknowledgement_number);
-  
+    //printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN);
+ printf("Sending Packet %d ",acknowledgement_number );
+    if(retransmit_packet == 1)
+      printf("Retransmition ");
+    if(SYN)
+      printf("SYN");
+    if(FIN)
+      printf(" FIN");
+    printf("\n\n");
   return;
 }
 
@@ -68,7 +73,7 @@ int main(int argc, char **argv) {
     int max_packet_length = 1024; //same as server
     int mac_sequence_number = 30720; //same as server
     int rto_val = 500 ; // This value will only change for the extra credit part
-
+    retransmit_packet = 0;
     FILE *fp;
     char file_data[1000];
     bzero(file_data ,1000);
@@ -168,7 +173,9 @@ int main(int argc, char **argv) {
           sequence_number = 0; // CHANGE THIS
 
           bzero(buf, BUFSIZE);
+          
           EncodeTCPHeader(buf, file_data, completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          retransmit_packet = 0;
           gettimeofday(&t1, NULL);
           n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
           //start SYN timer here
@@ -207,7 +214,7 @@ int main(int argc, char **argv) {
                 elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
                 
                 if(elapsedTime >= rto_val){
-                  printf("resend\n");
+                  retransmit_packet = 1;
                   goto SYN_LOST;
                 }
 
@@ -219,7 +226,7 @@ int main(int argc, char **argv) {
                 elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
                 
                 if(elapsedTime >= rto_val){
-                  printf("resend FIN client\n");
+                  retransmit_packet = 1;
                   goto FIN_LOST;
                 }
 
@@ -313,6 +320,7 @@ int main(int argc, char **argv) {
 
                   bzero(buf, BUFSIZE);
                   EncodeTCPHeader(buf, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                  retransmit_packet = 0;
                   gettimeofday(&t1 , NULL);
                   n = sendto(sockfd, buf, sizeof(buf), 0, (const struct sockaddr* ) &serveraddr, serverlen);
                   if (n < 0)  
@@ -326,7 +334,6 @@ int main(int argc, char **argv) {
                   
                   
                   int i = 0;
-                  printf("seq_num: %d   ack_num: %d bytes_read: %u  expected_seq_num: %d \n\n",sequence_number,acknowledgement_number,bytes_read, expected_seq_num );
                   unsigned int latest_ack;
                   if(sequence_number - expected_seq_num >= 0){
 
@@ -338,11 +345,8 @@ int main(int argc, char **argv) {
 
                       int count = 0;
                       
-                    for(i = 0; i < w_size_num ; i++){
-                        printf("ooo_pkts[%d]: %d  ",i, ooo_pkts_array[i]);
-                      }
-
-                      printf("\n");
+                   
+                      
                     for(i = 0 ; i < w_size_num ; i++){
                       if(ooo_pkts_array[i] == 1){
                         fwrite(data_buffer + (i*1000) , 1 , bytes_ood_pkts[i] , fp);
@@ -372,29 +376,25 @@ int main(int argc, char **argv) {
                     bytes_ood_pkts[w_size_num - 1] = 0;
 
                     }
-                    for(i = 0; i < w_size_num ; i++){
-                        printf("ooo_pkts[%d]: %d  ",i, ooo_pkts_array[i]);
-                      }
+                    
                       printf("\n");
                     int tmp = acknowledgement_number;
                     //acknowledgement_number = sequence_number + 1; // WHAT ABOUT THIS ONE?        
                     sequence_number += (max_packet_length * count); 
                     acknowledgement_number = sequence_number + 1;
                     latest_ack = acknowledgement_number;
-                    printf("count: %d\n", count);
+                   
                   }
                   else{
                     //has to be tested
-                    printf("In Else\n");
+                    
                     int diff = sequence_number - expected_seq_num - 1024;
                     //for debugging
                     
-                    printf("index0: %d\n", diff);
+                    
                     int diff_index = (diff)/1024;
-                     printf("index1: %d\n", diff_index);
                     ooo_pkts++;
                     ooo_pkts_array[diff_index] = 1;
-                    printf("index2: %d\n", diff_index);
                     memcpy(data_buffer+(diff_index * 1000) , file_data ,1000);
                     bytes_ood_pkts[diff_index] = bytes_read;
                     

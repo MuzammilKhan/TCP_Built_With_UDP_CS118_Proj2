@@ -13,7 +13,7 @@ server:
 	gcc server.c -o server
 clean:
 	shopt -s extglob; \
-	`rm -f client server test_server`
+	`rm -f client server `
 
 dist:
-	zip project1_104332038  Makefile README report.pdf webserver.c
+	tar -czvf project2_104332038_204282448.tar  Makefile README report.pdf client.c  server.c

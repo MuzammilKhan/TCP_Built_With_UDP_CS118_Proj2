@@ -22,7 +22,7 @@ int max(int a, int b){
   else
     return b;
 }
-
+int retransmit_packet;
 /*Decode basic "TCP header" at msgp and get desired values. Following data types chosen so that encoding is easy later. Using referenced
 data types instead of pointers for clarity about sizes. ACK, SYN, and FIN use only 1 bit. Ignoring checksum and other fields. */
 void DecodeTCPHeader(char* msgp, char* data, char *completed,unsigned short * bytes_read ,unsigned int* sequence_number, unsigned int* acknowledgement_number, unsigned short* ACK, unsigned short* SYN, unsigned short* FIN, unsigned short* window_size){
@@ -36,7 +36,7 @@ void DecodeTCPHeader(char* msgp, char* data, char *completed,unsigned short * by
   memcpy(bytes_read , msgp+16, 2);
   //memcpy(completed , msgp+18, 1);
   
-  printf("Receiving Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u \n\n"   ,*acknowledgement_number , *sequence_number , *ACK , *FIN , *SYN);
+  printf("Receiving Packet %d\n\n"   ,*acknowledgement_number );
  
   return;
 }
@@ -57,7 +57,16 @@ void EncodeTCPHeader(char* msgp,char* data , char completed,unsigned short  byte
   //memcpy(msgp+18, &completed, 1);
    memcpy(msgp+19 , data, bytes_read);
   
-   printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u comp: %c bytes: %u\n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN ,completed,bytes_read);
+   //printf("Sending Packet ACK#: %d SEQ#: %d ACK: %u  FIN: %u SYN: %u comp: %c bytes: %u\n\n"   ,acknowledgement_number , sequence_number , ACK , FIN , SYN ,completed,bytes_read);
+    printf("Sending Packet %d %d ",sequence_number , window_size);
+    if(retransmit_packet == 1)
+      printf("Retransmition ");
+    if(SYN)
+      printf("SYN");
+    if(FIN)
+      printf(" FIN");
+    printf("\n\n");
+  
   return;
 }
 
@@ -111,7 +120,7 @@ int main(int argc, char *argv[])
   int fastrecovery = 0;
   int duplicate_ack_count = 0;
   int ca_acks_count = 0;
-  int retransmit_packet = 0;
+  retransmit_packet = 0;
   int sliding_window[window_size_req/max_packet_length];
   struct timeval timer_window[window_size_req/max_packet_length];
   unsigned short source; 
@@ -182,11 +191,13 @@ int main(int argc, char *argv[])
         
         
         if(elapsedTime >= rto_val){
-          printf("Sending server FIN again\n");
+          
           FIN = 1;
           ACK = 0;
           SYN = 0;
+          retransmit_packet = 1;
           EncodeTCPHeader(buffer, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          retransmit_packet = 0;
           n = sendto(sockfd, buffer, sizeof(buffer), 0, (const struct sockaddr* ) &cli_addr, clilen);
           if (n < 0)  
             error("ERROR in FIN init");
@@ -267,13 +278,12 @@ int main(int argc, char *argv[])
                 //printf("Elapsed Time: %f\n", elapsedTime);
 
         if(elapsedTime >= rto_val && sliding_window[i] != 0){
-         printf("Retransmitting \n");
+        
           //retransmit lost packet
           unsigned int dropped_seq = sliding_window[i];
           //If we are going to have timeout come here then we need a way to check that and if so update dropped_seq accordingly AND FLAGS somehow
           int pkt_24_offset_1 = (dropped_seq/max_packet_length) * 24;
           int pkt_24_offset_2 = (latest_sequence_number/max_packet_length)*24;
-          printf("dropped_seq: %d latest_sequence_number: %d pkt_24_offset_1: %d pkt_24_offset_2: %d\n",dropped_seq,latest_sequence_number , pkt_24_offset_1 , pkt_24_offset_2 );
           //fseek(fp, dropped_seq - latest_sequence_number - pkt_24_offset_1 - pkt_24_offset_2, SEEK_CUR);
           fseek(fp, dropped_seq - pkt_24_offset_1 -1000, SEEK_SET);
           //send corresponding packet
@@ -295,13 +305,15 @@ int main(int argc, char *argv[])
           FIN = 0;
           
           sequence_number = sliding_window[i];
+          retransmit_packet = 1;
           EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+          retransmit_packet = 0;
+
           gettimeofday(&timer_window[i], NULL); // reset corresponding timer
           n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
           //fseek(fp, latest_sequence_number - dropped_seq + bytes_read - pkt_24_offset_1 - pkt_24_offset_2, SEEK_CUR);
           fseek(fp, latest_sequence_number - pkt_24_offset_2, SEEK_SET);
           
-          printf("Retransmitting seq_num: %d  index: %d\n", sequence_number,i);
           break;
           }
       }
@@ -342,10 +354,8 @@ int main(int argc, char *argv[])
 
         }else if (ACK) { //RECIEVED ACK
           //3 cases: part of 3 way handshake,  ack for closing, or ack for regular data,
-          printf("ack_num: %d  last_num: %d\n", acknowledgement_number , last_file_ack_number);
           if(completed == '1' && acknowledgement_number == last_file_ack_number){
             //TODO: Have server start connection teardown 
-                      printf("Sending server FIN\n");
                       FIN = 1;
                       ACK = 0;
                       SYN = 0;
@@ -394,7 +404,6 @@ int main(int argc, char *argv[])
                                 
                                 completed ='1';
                                 last_file_ack_number = sliding_window[j] + 1; //Set last file ack number here
-                                printf("Read the last bytes. :%d\n\n\n\n\n\n\n\n\n\n\n\n\n" ,last_file_ack_number );
                                 break;
                               }
                               bytes_read++;
@@ -409,9 +418,7 @@ int main(int argc, char *argv[])
                         
                         EncodeTCPHeader(buffer, file_data, completed,bytes_read, sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
                         //Initialize corresponding timer
-                        printf("Got here j: %d\n",j);
                         gettimeofday(timer_window +j, NULL); 
-                        printf("After time\n");
                         n = sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &cli_addr, clilen);
 
                         if(completed == '1'){
@@ -465,8 +472,6 @@ int main(int argc, char *argv[])
                   //find how many element to remove from sliding window
                   int i = 0;
                   for(; i < cwnd; i++){
-                    printf("i: %d\n",i );
-                    printf("latest_seq: %d  ack_num: %d   sliding_window[i]: %d\n", latest_sequence_number , acknowledgement_number , sliding_window[i]);
                     if(sliding_window[i] > acknowledgement_number && sliding_window[i] <=  latest_sequence_number){ // is sequence number >= ack number
                       break;
                     }
@@ -475,15 +480,12 @@ int main(int argc, char *argv[])
                   int old_elements = i;
 
                   //shift received elements out of window
-                  printf("removing elements\n");
                   for(; i > 0; i--){ 
-                    printf("i: %d\n",i );
                     int j = 0;
                     for(; j < cwnd - 1 ; j++){
                       sliding_window[j] = sliding_window[j + 1];
-                      printf("%d ", sliding_window[j]);
-                    }
-                    printf("\n");
+                                          }
+                    
                   }
 
                   //shift array of timers TODO: Check this
@@ -497,17 +499,17 @@ int main(int argc, char *argv[])
 
  
                   if((old_elements != 0) && (completed != '1')){
-                    printf("GOt here,  compl: %c\n" , completed);
+                    
                     int j = 0;
                     for(; j < cwnd; j++){
-                      printf("before sliding_window[j]: %d  ", sliding_window[j]);
+                      
                       if(j >= cwnd - old_elements ){
                         if(j != 0){
                           sliding_window[j] = sliding_window[j-1] + max_packet_length;
                         }else {
                           sliding_window[j] = latest_sequence_number + max_packet_length;
                         }
-                        printf("after sliding_window[j]: %d\n", sliding_window[j]);
+                        
                         //send corresponding packet
                         int bytes_read = 0;
                         i = 0;
@@ -541,8 +543,8 @@ int main(int argc, char *argv[])
                     }
                   }
 
-
                 }
+                
               }
 
         }else if (FIN) { //CLOSING CONNECTION
@@ -550,7 +552,12 @@ int main(int argc, char *argv[])
                       FIN = 0;
                       ACK = 1;
                       SYN = 0;
+                    
+                    if(final_fin == 1)
+                      retransmit_packet = 1;
                     EncodeTCPHeader(buffer, file_data,completed,0,sequence_number, acknowledgement_number, ACK, SYN, FIN, window_size);
+                      retransmit_packet = 0;
+                      
                     gettimeofday(&t1,NULL);
                     
                     n = sendto(sockfd, buffer, sizeof(buffer), 0, (const struct sockaddr* ) &cli_addr, clilen);
